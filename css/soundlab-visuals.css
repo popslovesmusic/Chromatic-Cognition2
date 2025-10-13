@@ -1,0 +1,120 @@
+.visualizer-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 20px;
+  margin-bottom: 24px;
+}
+
+.visualizer {
+  background: var(--color-surface);
+  border: 2px solid var(--color-border);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: inset 0 0 18px rgba(0, 255, 102, 0.12);
+}
+
+canvas {
+  width: 100%;
+  background: #000;
+  border: 2px solid var(--color-border-subtle);
+  border-radius: 10px;
+}
+
+.image-layout {
+  display: flex;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.image-layout__pane {
+  flex: 1 1 280px;
+}
+
+.image-canvas {
+  height: 300px;
+}
+
+.image-meta {
+  text-align: center;
+  margin-top: 12px;
+  font-size: 0.75rem;
+  color: var(--color-muted);
+}
+
+.matrix-display {
+  background: var(--color-panel);
+  border: 2px solid var(--color-border);
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: var(--shadow-glow);
+}
+
+.log-display {
+  background: #000;
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 10px;
+  padding: 12px;
+  height: 220px;
+  overflow-y: auto;
+  font-size: 0.8rem;
+  font-family: var(--font-body);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.log-display--flash {
+  border-color: var(--color-highlight);
+  box-shadow: 0 0 18px rgba(0, 246, 255, 0.4);
+}
+
+.log-entry {
+  margin-bottom: 6px;
+  color: var(--color-muted);
+}
+
+.log-entry--high {
+  color: var(--color-highlight);
+}
+
+.log-placeholder {
+  color: var(--color-primary-faint);
+  text-align: center;
+  padding: 20px 0;
+}
+
+.log-summary {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: var(--color-primary-soft);
+  margin-top: 8px;
+}
+
+.matrix {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.matrix-cell {
+  background: rgba(0, 255, 102, 0.08);
+  border: 1px solid rgba(0, 255, 102, 0.2);
+  border-radius: 8px;
+  padding: 12px;
+  text-align: center;
+  font-size: 0.8rem;
+}
+
+.matrix-cell.active {
+  background: rgba(0, 246, 255, 0.15);
+  border-color: var(--color-highlight);
+}
+
+@media (max-width: 768px) {
+  .visualizer-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .status-tip {
+    font-size: 0.75rem;
+  }
+}

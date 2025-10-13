@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CPWP Audio Parameter Control System</title>
+    <link rel="stylesheet" href="css/soundlab-theme.css" />
+    <link rel="stylesheet" href="css/soundlab-controls.css" />
+    <link rel="stylesheet" href="css/soundlab-visuals.css" />
+  </head>
+  <body>
+    <div data-include="partials/config-loader.html"></div>
+    <div class="container">
+      <h1>⚡ CPWP Audio Parameter Control System ⚡</h1>
+      <div class="subtitle">
+        Spectral-Temporal Duality Interface with CPWP Work Analysis | Click knob → use ↑↓ (Shift=fine, Ctrl=coarse)
+      </div>
+      <div data-include="partials/transport-controls.html"></div>
+      <div class="control-panel">
+        <div data-include="partials/eq-panel.html"></div>
+        <div data-include="partials/saturation-panel.html"></div>
+      </div>
+      <div data-include="partials/image-sonification.html"></div>
+      <div data-include="partials/visualizers.html"></div>
+      <div data-include="partials/log-and-matrix.html"></div>
+    </div>
+    <script type="module" src="js/soundlab-main.js"></script>
+  </body>
+</html>

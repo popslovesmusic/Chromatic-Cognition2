@@ -1,0 +1,53 @@
+<div class="matrix-display panel--spaced">
+  <h3>CPWP Parameter Work Log</h3>
+  <div class="log-actions">
+    <button
+      id="clearLogBtn"
+      type="button"
+      aria-label="Clear CPWP log entries (Control+Shift+C)"
+      aria-keyshortcuts="Control+Shift+C"
+      data-shortcut="Ctrl+Shift+C"
+      data-shortcut-label="Clear log"
+    >
+      Clear Log
+    </button>
+    <button
+      id="exportLogBtn"
+      type="button"
+      aria-label="Export log as CSV (Control+Shift+E)"
+      aria-keyshortcuts="Control+Shift+E"
+      data-shortcut="Ctrl+Shift+E"
+      data-shortcut-label="Export CSV"
+    >
+      Export CSV
+    </button>
+    <button
+      id="exportJsonBtn"
+      type="button"
+      aria-label="Export log as JSON (Control+Shift+J)"
+      aria-keyshortcuts="Control+Shift+J"
+      data-shortcut="Ctrl+Shift+J"
+      data-shortcut-label="Export JSON"
+    >
+      Export JSON
+    </button>
+  </div>
+  <div
+    id="logDisplay"
+    class="log-display"
+    role="log"
+    aria-live="polite"
+    aria-atomic="false"
+  >
+    <div class="log-placeholder">Waiting for parameter changes...</div>
+  </div>
+  <div class="log-summary">
+    <span id="logCount">0 events logged</span>
+    <span id="workOutput">Total Work: 0.00</span>
+  </div>
+</div>
+
+<div class="matrix-display panel--spaced">
+  <h3>Parameter Coupling Matrix</h3>
+  <div class="matrix" id="matrixGrid"></div>
+</div>

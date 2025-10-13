@@ -1,0 +1,41 @@
+<div class="panel panel--spaced panel--margin-bottom is-hidden" id="imagePanel">
+  <h2>🖼️ Image Sonification Engine 🖼️</h2>
+  <div class="image-layout">
+    <div class="image-layout__pane">
+      <canvas id="imageCanvas" class="image-canvas"></canvas>
+      <div class="image-meta">
+        <span id="imageInfo">No image loaded</span>
+      </div>
+    </div>
+    <div class="image-layout__pane">
+      <div class="form-field">
+        <label class="form-field__label" for="sonifyMode">Sonification Mode:</label>
+        <select id="sonifyMode" class="form-field__control">
+          <option value="spectral">Spectral (Rows = Frequencies)</option>
+          <option value="harmonic">Harmonic (Brightness = Harmonics)</option>
+          <option value="fm">FM Synthesis (R→Freq, G→Mod, B→Index)</option>
+          <option value="additive">Additive (Each pixel = Oscillator)</option>
+        </select>
+      </div>
+      <div class="form-field">
+        <label class="form-field__label" for="scanSpeed">Scan Speed:</label>
+        <input type="range" id="scanSpeed" min="0.1" max="5" step="0.1" value="1" class="form-field__control" />
+        <div class="image-meta" id="scanSpeedValue">1.0x</div>
+      </div>
+      <div class="form-field">
+        <label class="form-field__label" for="freqMin">Frequency Range:</label>
+        <div class="form-field--inline">
+          <input type="number" id="freqMin" value="100" />
+          <input type="number" id="freqMax" value="8000" />
+        </div>
+      </div>
+      <div class="form-hint">
+        <strong>How it works:</strong><br />
+        • Image pixels → audio parameters<br />
+        • Left to right = time progression<br />
+        • Top to bottom = frequency spectrum<br />
+        • Brightness controls amplitude or modulation depth
+      </div>
+    </div>
+  </div>
+</div>
