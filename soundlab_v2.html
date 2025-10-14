@@ -1,0 +1,1026 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CPWP Audio Parameter Control System</title>
+    <link rel="stylesheet" href="css/soundlab-theme.css" />
+    <link rel="stylesheet" href="css/soundlab-controls.css" />
+    <link rel="stylesheet" href="css/soundlab-visuals.css" />
+    <style>
+      .spectrogram-canvas { width: 100%; height: 200px; background: #000; margin: 10px 0; border: 1px solid #0f0; }
+      .vu-meter { display: inline-block; width: 120px; height: 20px; background: #111; border: 1px solid #0f0; position: relative; margin: 5px; }
+      .vu-bar { height: 100%; background: linear-gradient(to right, #0f0 0%, #ff0 70%, #f00 100%); transition: width 0.05s; }
+      .vu-peak { position: absolute; width: 2px; height: 100%; background: #f00; transition: left 0.1s; }
+      .work-rate-canvas { width: 100%; height: 150px; background: #000; margin: 10px 0; border: 1px solid #0f0; }
+      .extended-controls { margin: 10px 0; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+      .extended-controls button { padding: 6px 12px; font-size: 0.85rem; }
+      .extended-controls select { padding: 4px 8px; font-size: 0.85rem; }
+      .recording-indicator { color: #f00; font-weight: bold; display: none; }
+      .vu-container { text-align: center; margin: 10px 0; }
+      /* ENHANCEMENT #1: Recording indicators */
+      .recording-info { display: none; align-items: center; gap: 10px; padding: 8px 12px; background: rgba(255, 0, 0, 0.1); border: 1px solid #f00; border-radius: 4px; font-size: 0.85rem; margin: 10px 0; }
+      .recording-info.active { display: flex; }
+      @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.6; transform: scale(1.1); } }
+      .recording-pulse { animation: pulse 1s ease-in-out infinite; }
+      .recording-timer { font-family: monospace; color: #0f0; font-weight: bold; }
+      .recording-size { font-family: monospace; color: #ff0; }
+      .recording-cancel-btn { padding: 4px 8px; background: #f00; color: #fff; border: none; border-radius: 3px; cursor: pointer; font-size: 0.75rem; }
+      .recording-cancel-btn:hover { background: #c00; }
+      /* ENHANCEMENT #2: Preset browser */
+      .preset-browser { margin: 10px 0; padding: 10px; background: rgba(0, 255, 0, 0.05); border: 1px solid var(--color-primary); border-radius: 4px; }
+      .preset-browser-title { font-weight: bold; margin-bottom: 8px; color: var(--color-primary); }
+      .preset-list { max-height: 150px; overflow-y: auto; margin: 8px 0; padding: 5px; background: #000; border: 1px solid #333; border-radius: 3px; }
+      .preset-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; margin: 3px 0; background: rgba(0, 255, 0, 0.1); border-radius: 3px; font-size: 0.85rem; }
+      .preset-item:hover { background: rgba(0, 255, 0, 0.2); }
+      .preset-item-name { flex: 1; cursor: pointer; color: #0f0; }
+      .preset-item-name:hover { text-decoration: underline; }
+      .preset-item-delete { padding: 2px 6px; background: #f00; color: #fff; border: none; border-radius: 2px; cursor: pointer; font-size: 0.7rem; margin-left: 8px; }
+      .preset-item-delete:hover { background: #c00; }
+      .preset-browser-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+      .preset-browser-actions button { padding: 5px 10px; font-size: 0.8rem; }
+    </style>
+  </head>
+  <body>
+    <div data-include="partials/config-loader.html"></div>
+    <div class="container">
+      <h1>⚡ CPWP Audio Parameter Control System ⚡</h1>
+      <div class="subtitle">
+        Spectral-Temporal Duality Interface with CPWP Work Analysis | Click knob → use ↑↓ (Shift=fine, Ctrl=coarse)
+      </div>
+      <div data-include="partials/transport-controls.html"></div>
+      <div class="extended-controls">
+        <button id="micBtn">Mic</button>
+        <button id="recBtn">Rec</button>
+        <span id="recIndicator" class="recording-indicator">● REC</span>
+        <button id="savePresetBtn">Save</button>
+        <button id="loadPresetBtn">Load</button>
+        <button id="storeABtn">A</button>
+        <button id="storeBBtn">B</button>
+        <button id="compareABBtn">A↔B</button>
+        <label>FFT: <select id="fftSizeSelect">
+          <option value="512">512</option>
+          <option value="1024">1024</option>
+          <option value="2048" selected>2048</option>
+          <option value="4096">4096</option>
+          <option value="8192">8192</option>
+        </select></label>
+        <button id="exportCSVBtn">Export CSV</button>
+        <label>Noise: <input type="range" id="noiseGainSlider" min="0" max="100" value="0" step="1" style="width:80px" /></label>
+      </div>
+      <!-- ENHANCEMENT #1: Recording info display -->
+      <div id="recordingInfo" class="recording-info">
+        <span class="recording-pulse" style="color: #f00; font-size: 1.2rem;">●</span>
+        <span class="recording-timer" id="recordingTimer">00:00</span>
+        <span class="recording-size" id="recordingSize">~0 KB</span>
+        <button class="recording-cancel-btn" id="cancelRecBtn">Cancel</button>
+      </div>
+      <div class="vu-container">
+        <div style="font-size: 0.75rem; color: var(--color-muted); margin-bottom: 3px;">Signal Level (Mono)</div>
+        <div class="vu-meter" id="vuLeft"><div class="vu-bar" id="vuBarLeft"></div><div class="vu-peak" id="vuPeakLeft"></div></div>
+        <div class="vu-meter" id="vuRight"><div class="vu-bar" id="vuBarRight"></div><div class="vu-peak" id="vuPeakRight"></div></div>
+      </div>
+      <div class="control-panel">
+        <div data-include="partials/eq-panel.html"></div>
+        <div data-include="partials/saturation-panel.html"></div>
+      </div>
+      <!-- ENHANCEMENT #2: Preset browser -->
+      <div class="preset-browser">
+        <div class="preset-browser-title">Preset Manager</div>
+        <div id="presetList" class="preset-list"></div>
+        <div class="preset-browser-actions">
+          <button id="refreshPresetsBtn">Refresh</button>
+          <button id="exportPresetsBtn">Export All</button>
+          <button id="importPresetsBtn">Import</button>
+          <input type="file" id="presetFileInput" accept=".json" style="display:none" />
+        </div>
+      </div>
+      <div data-include="partials/image-sonification.html"></div>
+      <div data-include="partials/visualizers.html"></div>
+      <canvas class="spectrogram-canvas" id="spectrogramCanvas" width="1024" height="200"></canvas>
+      <canvas class="work-rate-canvas" id="workRateCanvas" width="800" height="150"></canvas>
+      <div data-include="partials/log-and-matrix.html"></div>
+    </div>
+    <script type="module">
+      // Enhanced CPWP with inline integration
+      // FIX: Import soundlab-main.js to load HTML partials and initialize the application
+      import './js/soundlab-main.js';
+      import { updateKnobRotation } from './js/soundlab-utils.js';
+      import { initializeEventHandlers } from './js/soundlab-events.js';
+      import { initLogging, logParameterChange, updateLogDisplay } from './js/soundlab-logging.js';
+      import * as AudioCore from './js/soundlab-audio-core.js';
+
+      // Extended global state
+      let comp = null;
+      let micStream = null;
+      let micSource = null;
+      let micEnabled = false;
+      let mediaRecorder = null;
+      let recordedChunks = [];
+      let mediaStreamDest = null;
+      // ENHANCEMENT #1: Recording timer and size tracking
+      let recordingStartTime = 0;
+      let recordingTimerInterval = null;
+      let recordingBytesEstimate = 0;
+      let noiseSource = null;
+      let noiseGain = null;
+      let presetA = null;
+      let presetB = null;
+      let currentABState = null; // BUG FIX #10: Track current A/B state ('A', 'B', or null)
+      let currentPresetName = 'default';
+      let spectrogramHistory = [];
+      let workRateHistory = [];
+      let lastParamSnapshot = null;
+      let sessionStartTime = Date.now();
+      let csvLogData = [];
+      let csvFirstCaptureDone = false; // BUG FIX #11: Track first capture to bypass throttle
+      let vuPeakLeftValue = 0;
+      let vuPeakRightValue = 0;
+      const vuPeakDecay = 0.95;
+
+      // BUG FIX #5: FFT buffers - moved to global scope for efficiency
+      let fftDataArray = null;
+      let fftFrequencyData = null;
+      let currentFFTSize = 2048;
+
+      // BUG FIX #9: DOM readiness tracking for preset loading
+      let isDOMReady = false;
+      let pendingPresetApplication = null;
+
+      // BUG FIX #10: Deep equality with tolerance for float comparison
+      function paramsEqual(paramsA, paramsB, epsilon = 0.001) {
+        if (!paramsA || !paramsB) return false;
+        const keysA = Object.keys(paramsA).filter(k => k !== 'name');
+        const keysB = Object.keys(paramsB).filter(k => k !== 'name');
+        if (keysA.length !== keysB.length) return false;
+        for (const key of keysA) {
+          if (!(key in paramsB)) return false;
+          const diff = Math.abs(paramsA[key] - paramsB[key]);
+          if (diff > epsilon) return false;
+        }
+        return true;
+      }
+
+      // BUG FIX #10: Update A/B button visual indicator
+      function updateABIndicator() {
+        const btn = document.getElementById('compareABBtn');
+        if (!btn) return;
+        if (currentABState === 'A') {
+          btn.textContent = 'A↔B [A]';
+          btn.style.background = 'linear-gradient(to right, #0f0 50%, #333 50%)';
+        } else if (currentABState === 'B') {
+          btn.textContent = 'A↔B [B]';
+          btn.style.background = 'linear-gradient(to right, #333 50%, #0f0 50%)';
+        } else {
+          btn.textContent = 'A↔B';
+          btn.style.background = '';
+        }
+      }
+
+      // ENHANCEMENT #4: Browser compatibility checks
+      function checkBrowserCompatibility() {
+        const warnings = [];
+
+        // Check HTTPS for getUserMedia
+        if (location.protocol !== 'https:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+          warnings.push('⚠️ Microphone requires HTTPS (or localhost). getUserMedia will not work over HTTP.');
+        }
+
+        // Check MediaRecorder support
+        if (!window.MediaRecorder) {
+          warnings.push('⚠️ MediaRecorder not supported. Recording feature will not work.');
+        }
+
+        // Check AudioContext support
+        if (!window.AudioContext && !window.webkitAudioContext) {
+          warnings.push('❌ Web Audio API not supported. Application will not work.');
+        }
+
+        // Check canvas size limits (mobile Safari)
+        if (/iPhone|iPad|iPod/.test(navigator.userAgent)) {
+          const spectrogramCanvas = document.getElementById('spectrogramCanvas');
+          if (spectrogramCanvas && (spectrogramCanvas.width > 4096 || spectrogramCanvas.height > 4096)) {
+            warnings.push('⚠️ Mobile Safari: Canvas may be too large (limit: 4096px). Consider reducing size.');
+          }
+        }
+
+        // Log warnings
+        if (warnings.length > 0) {
+          console.warn('[ENHANCEMENT #4] Browser compatibility warnings:');
+          warnings.forEach(w => console.warn(w));
+
+          // Show first warning to user
+          const status = document.getElementById('status');
+          if (status) {
+            status.textContent = warnings[0];
+          }
+        } else {
+          console.log('[ENHANCEMENT #4] Browser compatibility: All checks passed');
+        }
+      }
+
+      // ENHANCEMENT #1: Recording UI update functions
+      function updateRecordingUI() {
+        const elapsed = (Date.now() - recordingStartTime) / 1000;
+        const minutes = Math.floor(elapsed / 60);
+        const seconds = Math.floor(elapsed % 60);
+        const timerEl = document.getElementById('recordingTimer');
+        if (timerEl) {
+          timerEl.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        }
+
+        // Estimate file size (WebM audio typically ~16 kbps = 2 KB/s)
+        recordingBytesEstimate = elapsed * 2048;
+        const sizeKB = Math.round(recordingBytesEstimate / 1024);
+        const sizeEl = document.getElementById('recordingSize');
+        if (sizeEl) {
+          if (sizeKB > 1024) {
+            sizeEl.textContent = `~${(sizeKB / 1024).toFixed(1)} MB`;
+          } else {
+            sizeEl.textContent = `~${sizeKB} KB`;
+          }
+        }
+      }
+
+      function showRecordingInfo() {
+        const infoEl = document.getElementById('recordingInfo');
+        if (infoEl) infoEl.classList.add('active');
+      }
+
+      function hideRecordingInfo() {
+        const infoEl = document.getElementById('recordingInfo');
+        if (infoEl) infoEl.classList.remove('active');
+      }
+
+      // Smooth parameter utility
+      function smoothParam(param, targetValue, rampTime = 0.05) {
+        const audioContext = AudioCore.getAudioContext();
+        if (!audioContext) return;
+        const now = audioContext.currentTime;
+        param.cancelScheduledValues(now);
+        param.setValueAtTime(param.value, now);
+        param.linearRampToValueAtTime(targetValue, now + rampTime);
+      }
+
+      // FIX: Wrapper function to extend initAudio (cannot reassign module exports)
+      async function initAudioExtended() {
+        // Call original AudioCore.initAudio
+        await AudioCore.initAudio();
+
+        const audioContext = AudioCore.getAudioContext();
+        if (!audioContext) return;
+
+        // Add compressor
+        comp = audioContext.createDynamicsCompressor();
+        comp.threshold.value = -20;
+        comp.knee.value = 10;
+        comp.ratio.value = 12;
+        comp.attack.value = 0.003;
+        comp.release.value = 0.25;
+
+        // Add white noise
+        noiseGain = audioContext.createGain();
+        noiseGain.gain.value = 0;
+        const bufferSize = audioContext.sampleRate * 2;
+        const noiseBuffer = audioContext.createBuffer(1, bufferSize, audioContext.sampleRate);
+        const output = noiseBuffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          output[i] = Math.random() * 2 - 1;
+        }
+        noiseSource = audioContext.createBufferSource();
+        noiseSource.buffer = noiseBuffer;
+        noiseSource.loop = true;
+        const filters = AudioCore.getFilters();
+        noiseSource.connect(noiseGain);
+        noiseGain.connect(filters.lowShelf);
+        noiseSource.start();
+
+        // Rebuild chain with compressor
+        rebuildProcessingChain();
+
+        console.log('[FIX] Extended audio initialization complete (compressor + noise added)');
+      }
+
+      function rebuildProcessingChain() {
+        const audioContext = AudioCore.getAudioContext();
+        const filters = AudioCore.getFilters();
+        const gainNode = AudioCore.getGainNode();
+        const analyser = AudioCore.getAnalyser();
+        if (!audioContext || !filters.lowShelf || !filters.midPeak || !filters.highShelf || !filters.waveshaper || !gainNode || !analyser || !comp) return;
+
+        try { gainNode.disconnect(); } catch (e) {}
+        try { filters.lowShelf.disconnect(); } catch (e) {}
+        try { filters.midPeak.disconnect(); } catch (e) {}
+        try { filters.highShelf.disconnect(); } catch (e) {}
+        try { filters.waveshaper.disconnect(); } catch (e) {}
+        try { comp.disconnect(); } catch (e) {}
+        try { analyser.disconnect(); } catch (e) {}
+
+        filters.lowShelf.connect(filters.midPeak);
+        filters.midPeak.connect(filters.highShelf);
+        filters.highShelf.connect(filters.waveshaper);
+        filters.waveshaper.connect(gainNode);
+        gainNode.connect(comp);
+        comp.connect(analyser);
+        analyser.connect(audioContext.destination);
+        if (mediaStreamDest) {
+          analyser.connect(mediaStreamDest);
+        }
+      }
+
+      // Patch applyParamToAudio to use smoothParam
+      window.applyParamToAudioSmooth = function(param, value) {
+        const filters = AudioCore.getFilters();
+        if (param === 'low' && filters.lowShelf) {
+          smoothParam(filters.lowShelf.gain, value);
+        } else if (param === 'mid' && filters.midPeak) {
+          smoothParam(filters.midPeak.gain, value);
+        } else if (param === 'high' && filters.highShelf) {
+          smoothParam(filters.highShelf.gain, value);
+        } else if ((param === 'drive' || param === 'curve' || param === 'mix')) {
+          AudioCore.updateSaturation();
+        }
+      };
+
+      // Enhanced draw loop with new visualizations
+      let originalDrawRunning = false;
+      function enhancedDraw() {
+        const audioContext = AudioCore.getAudioContext();
+        const analyser = AudioCore.getAnalyser();
+        if (!audioContext || !analyser) {
+          requestAnimationFrame(enhancedDraw);
+          return;
+        }
+
+        // BUG FIX #5: Initialize or recreate buffers only when needed
+        const bufferLength = analyser.frequencyBinCount;
+        if (!fftDataArray || fftDataArray.length !== bufferLength) {
+          fftDataArray = new Uint8Array(bufferLength);
+          fftFrequencyData = new Uint8Array(bufferLength);
+          console.log(`[BUG FIX #5] FFT buffers created/resized: ${bufferLength} bins`);
+        }
+
+        analyser.getByteTimeDomainData(fftDataArray);
+        analyser.getByteFrequencyData(fftFrequencyData);
+
+        updateSpectrogram(fftFrequencyData);
+        updateVUMeters(fftDataArray);
+        updateWorkRateChart();
+        captureCSVSnapshot(fftFrequencyData, fftDataArray);
+
+        requestAnimationFrame(enhancedDraw);
+      }
+
+      function updateSpectrogram(freqData) {
+        const canvas = document.getElementById('spectrogramCanvas');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const width = canvas.width;
+        const height = canvas.height;
+        spectrogramHistory.push(new Uint8Array(freqData));
+        if (spectrogramHistory.length > width) spectrogramHistory.shift();
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, width, height);
+        for (let x = 0; x < spectrogramHistory.length; x++) {
+          const column = spectrogramHistory[x];
+          for (let y = 0; y < height; y++) {
+            const bin = Math.floor((y / height) * column.length);
+            const intensity = column[bin];
+            const hue = 240 - (intensity / 255) * 240;
+            ctx.fillStyle = `hsl(${hue}, 100%, ${intensity / 5.1}%)`;
+            ctx.fillRect(x, height - y - 1, 1, 1);
+          }
+        }
+      }
+
+      // BUG FIX #6: VU meters now show honest mono signal (duplicate display)
+      // Two meters show same mono signal for visual symmetry
+      function updateVUMeters(timeData) {
+        // Calculate RMS of entire mono signal
+        let sum = 0;
+        for (let i = 0; i < timeData.length; i++) {
+          const norm = (timeData[i] - 128) / 128;
+          sum += norm * norm;
+        }
+        const rms = Math.sqrt(sum / timeData.length);
+
+        // Both meters show same mono signal
+        vuPeakLeftValue = Math.max(rms, vuPeakLeftValue * vuPeakDecay);
+        vuPeakRightValue = vuPeakLeftValue; // Same as left (mono)
+
+        const barL = document.getElementById('vuBarLeft');
+        const barR = document.getElementById('vuBarRight');
+        const peakL = document.getElementById('vuPeakLeft');
+        const peakR = document.getElementById('vuPeakRight');
+        if (barL) barL.style.width = (rms * 100) + '%';
+        if (barR) barR.style.width = (rms * 100) + '%'; // Same as left
+        if (peakL) peakL.style.left = (vuPeakLeftValue * 100) + '%';
+        if (peakR) peakR.style.left = (vuPeakLeftValue * 100) + '%'; // Same as left
+      }
+
+      function updateWorkRateChart() {
+        const params = AudioCore.getParamsState();
+        if (!lastParamSnapshot) {
+          lastParamSnapshot = { ...params, time: Date.now() };
+          return;
+        }
+        const now = Date.now();
+        const dt = (now - lastParamSnapshot.time) / 1000;
+        if (dt < 0.1) return;
+        let deltaSum = 0;
+        for (const key in params) {
+          deltaSum += Math.abs(params[key] - lastParamSnapshot[key]);
+        }
+        const rate = deltaSum / dt;
+        workRateHistory.push({ time: now - sessionStartTime, rate });
+        if (workRateHistory.length > 300) workRateHistory.shift();
+        lastParamSnapshot = { ...params, time: now };
+
+        const canvas = document.getElementById('workRateCanvas');
+        if (!canvas) return;
+        const ctx = canvas.getContext('2d');
+        const width = canvas.width;
+        const height = canvas.height;
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, width, height);
+        if (workRateHistory.length < 2) return;
+        ctx.strokeStyle = '#0f0';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        const maxRate = Math.max(...workRateHistory.map(d => d.rate), 1);
+        for (let i = 0; i < workRateHistory.length; i++) {
+          const x = (i / workRateHistory.length) * width;
+          const y = height - (workRateHistory[i].rate / maxRate) * height;
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+        ctx.fillStyle = '#0f0';
+        ctx.font = '10px monospace';
+        ctx.fillText(`Work Rate: ${rate.toFixed(2)}/s`, 5, 15);
+      }
+
+      function captureCSVSnapshot(freqData, timeData) {
+        const now = Date.now();
+
+        // BUG FIX #11: Always capture first snapshot, then apply 200ms throttle
+        if (!csvFirstCaptureDone) {
+          csvFirstCaptureDone = true;
+          console.log('[BUG FIX #11] First CSV snapshot captured (bypassing throttle)');
+        } else if (csvLogData.length > 0 && (now - csvLogData[csvLogData.length - 1].time) < 200) {
+          return; // Throttle subsequent captures
+        }
+
+        const fftSize = parseInt(document.getElementById('fftSizeSelect').value);
+        const window = 'none'; // BUG FIX #8: Window function removed (was not implemented)
+
+        let rmsSum = 0;
+        for (let i = 0; i < timeData.length; i++) {
+          const normalized = (timeData[i] - 128) / 128;
+          rmsSum += normalized * normalized;
+        }
+        const rms = Math.sqrt(rmsSum / timeData.length);
+        const rmsDB = 20 * Math.log10(rms + 1e-10);
+
+        let centroid = 0, totalMag = 0;
+        for (let i = 0; i < freqData.length; i++) {
+          centroid += freqData[i] * i;
+          totalMag += freqData[i];
+        }
+        centroid = totalMag > 0 ? centroid / totalMag : 0;
+
+        let entropy = 0;
+        for (let i = 0; i < freqData.length; i++) {
+          const p = freqData[i] / (totalMag + 1e-10);
+          if (p > 0) entropy -= p * Math.log2(p);
+        }
+
+        const bands = 8;
+        const bandRMS = [];
+        const binPerBand = Math.floor(freqData.length / bands);
+        for (let b = 0; b < bands; b++) {
+          let sum = 0;
+          for (let i = 0; i < binPerBand; i++) {
+            const idx = b * binPerBand + i;
+            if (idx < freqData.length) sum += freqData[idx] * freqData[idx];
+          }
+          bandRMS.push(Math.sqrt(sum / binPerBand));
+        }
+
+        csvLogData.push({
+          time: (now - sessionStartTime) / 1000,
+          rms: rmsDB,
+          centroid,
+          entropy,
+          bandRMS,
+          preset: currentPresetName,
+          fftSize,
+          window
+        });
+      }
+
+      function exportCSV() {
+        if (csvLogData.length === 0) {
+          alert('No data to export.');
+          return;
+        }
+        let csv = 'Time(s),RMS(dB),Centroid,Entropy,Band0,Band1,Band2,Band3,Band4,Band5,Band6,Band7,Preset,FFTSize\n'; // BUG FIX #8: Removed Window column
+        csvLogData.forEach(row => {
+          csv += `${row.time.toFixed(3)},${row.rms.toFixed(2)},${row.centroid.toFixed(2)},${row.entropy.toFixed(3)},`;
+          csv += row.bandRMS.map(v => v.toFixed(2)).join(',');
+          csv += `,${row.preset},${row.fftSize}\n`; // BUG FIX #8: Removed window from output
+        });
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `cpwp_spectral_${Date.now()}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+
+      async function enableMic(on) {
+        const audioContext = AudioCore.getAudioContext();
+        const filters = AudioCore.getFilters();
+
+        // BUG FIX #3: Check if audio engine is initialized
+        if (!audioContext) {
+          alert('Please start audio engine first (click START AUDIO button)');
+          return;
+        }
+
+        if (on && !micEnabled) {
+          try {
+            micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            micSource = audioContext.createMediaStreamSource(micStream);
+            micSource.connect(filters.lowShelf);
+            micEnabled = true;
+            document.getElementById('micBtn').textContent = 'Mic ON';
+            const status = document.getElementById('status');
+            if (status) status.textContent = 'Microphone enabled';
+          } catch (err) {
+            alert('Microphone access denied: ' + err.message);
+          }
+        } else if (!on && micEnabled) {
+          if (micSource) micSource.disconnect();
+          if (micStream) micStream.getTracks().forEach(t => t.stop());
+          micEnabled = false;
+          document.getElementById('micBtn').textContent = 'Mic';
+          const status = document.getElementById('status');
+          if (status) status.textContent = 'Microphone disabled';
+        }
+      }
+
+      function startRec() {
+        const audioContext = AudioCore.getAudioContext();
+        const analyser = AudioCore.getAnalyser();
+
+        // BUG FIX #4: Check if audio engine is initialized
+        if (!audioContext) {
+          alert('Please start audio engine first (click START AUDIO button)');
+          return;
+        }
+
+        // BUG FIX #4: Prevent starting if already recording
+        if (mediaRecorder) return;
+
+        if (!mediaStreamDest) {
+          mediaStreamDest = audioContext.createMediaStreamDestination();
+          analyser.connect(mediaStreamDest);
+        }
+
+        recordedChunks = [];
+
+        // ENHANCEMENT #4: MediaRecorder format fallback for Safari
+        let mimeType = 'audio/webm';
+        if (!MediaRecorder.isTypeSupported('audio/webm')) {
+          if (MediaRecorder.isTypeSupported('audio/mp4')) {
+            mimeType = 'audio/mp4';
+            console.log('[ENHANCEMENT #4] Using audio/mp4 (Safari fallback)');
+          } else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+            mimeType = 'audio/webm;codecs=opus';
+          } else {
+            mimeType = ''; // Let browser choose
+            console.warn('[ENHANCEMENT #4] No preferred MIME type supported, using default');
+          }
+        }
+
+        mediaRecorder = new MediaRecorder(mediaStreamDest.stream, mimeType ? { mimeType } : {});
+
+        mediaRecorder.ondataavailable = e => {
+          if (e.data.size > 0) recordedChunks.push(e.data);
+        };
+
+        mediaRecorder.onstop = () => {
+          // ENHANCEMENT #1: Stop timer
+          if (recordingTimerInterval) {
+            clearInterval(recordingTimerInterval);
+            recordingTimerInterval = null;
+          }
+          hideRecordingInfo();
+
+          const blob = new Blob(recordedChunks, { type: mimeType || 'audio/webm' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
+          a.download = `cpwp_recording_${Date.now()}.${ext}`;
+          a.click();
+          URL.revokeObjectURL(url);
+          mediaRecorder = null;
+
+          const actualSizeKB = Math.round(blob.size / 1024);
+          console.log(`[ENHANCEMENT #1] Recording saved: ${actualSizeKB} KB (estimated: ${Math.round(recordingBytesEstimate / 1024)} KB)`);
+        };
+
+        // ENHANCEMENT #1: Start timer and UI updates
+        recordingStartTime = Date.now();
+        recordingBytesEstimate = 0;
+        showRecordingInfo();
+        updateRecordingUI();
+        recordingTimerInterval = setInterval(updateRecordingUI, 1000);
+
+        mediaRecorder.start();
+        document.getElementById('recBtn').textContent = 'Stop';
+        document.getElementById('recIndicator').style.display = 'inline';
+        const status = document.getElementById('status');
+        if (status) status.textContent = 'Recording...';
+        console.log('[ENHANCEMENT #1] Recording started with live timer');
+      }
+
+      function stopRec() {
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+          mediaRecorder.stop();
+          document.getElementById('recBtn').textContent = 'Rec';
+          document.getElementById('recIndicator').style.display = 'none';
+          const status = document.getElementById('status');
+          if (status) status.textContent = 'Recording saved';
+        }
+      }
+
+      // ENHANCEMENT #1: Cancel recording without saving
+      function cancelRec() {
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+          // Remove onstop handler to prevent save
+          mediaRecorder.onstop = () => {
+            if (recordingTimerInterval) {
+              clearInterval(recordingTimerInterval);
+              recordingTimerInterval = null;
+            }
+            hideRecordingInfo();
+            mediaRecorder = null;
+            console.log('[ENHANCEMENT #1] Recording cancelled without saving');
+          };
+          mediaRecorder.stop();
+          recordedChunks = [];
+          document.getElementById('recBtn').textContent = 'Rec';
+          document.getElementById('recIndicator').style.display = 'none';
+          const status = document.getElementById('status');
+          if (status) status.textContent = 'Recording cancelled';
+        }
+      }
+
+      // ENHANCEMENT #2: Save preset with overwrite confirmation
+      function savePreset() {
+        const params = AudioCore.getParamsState();
+        const name = prompt('Preset name:', currentPresetName);
+        if (!name) return;
+
+        // Check if preset exists
+        const existing = localStorage.getItem('cpwp_preset_' + name);
+        if (existing) {
+          if (!confirm(`Preset "${name}" already exists. Overwrite?`)) {
+            return;
+          }
+        }
+
+        currentPresetName = name;
+        const preset = { ...params, name };
+        localStorage.setItem('cpwp_preset_' + name, JSON.stringify(preset));
+        alert('Preset saved: ' + name);
+        refreshPresetList();
+        console.log('[ENHANCEMENT #2] Preset saved with overwrite check');
+      }
+
+      // ENHANCEMENT #2: Refresh preset list
+      function refreshPresetList() {
+        const listEl = document.getElementById('presetList');
+        if (!listEl) return;
+
+        const presets = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key.startsWith('cpwp_preset_')) {
+            const name = key.replace('cpwp_preset_', '');
+            presets.push(name);
+          }
+        }
+
+        if (presets.length === 0) {
+          listEl.innerHTML = '<div style="color: #666; padding: 10px; text-align: center;">No presets saved</div>';
+          return;
+        }
+
+        presets.sort();
+        listEl.innerHTML = presets.map(name => `
+          <div class="preset-item">
+            <span class="preset-item-name" onclick="loadPresetByName('${name}')">${name}</span>
+            <button class="preset-item-delete" onclick="deletePreset('${name}')">Delete</button>
+          </div>
+        `).join('');
+      }
+
+      // ENHANCEMENT #2: Load preset by name (called from list)
+      window.loadPresetByName = function(name) {
+        const stored = localStorage.getItem('cpwp_preset_' + name);
+        if (!stored) {
+          alert('Preset not found: ' + name);
+          return;
+        }
+        const preset = JSON.parse(stored);
+        applyPreset(preset);
+        currentPresetName = name;
+      };
+
+      // ENHANCEMENT #2: Delete preset
+      window.deletePreset = function(name) {
+        if (!confirm(`Delete preset "${name}"?`)) return;
+        localStorage.removeItem('cpwp_preset_' + name);
+        refreshPresetList();
+        console.log('[ENHANCEMENT #2] Preset deleted:', name);
+      };
+
+      // ENHANCEMENT #2: Export all presets as JSON
+      function exportAllPresets() {
+        const presets = {};
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key.startsWith('cpwp_preset_')) {
+            const name = key.replace('cpwp_preset_', '');
+            presets[name] = JSON.parse(localStorage.getItem(key));
+          }
+        }
+
+        if (Object.keys(presets).length === 0) {
+          alert('No presets to export');
+          return;
+        }
+
+        const json = JSON.stringify(presets, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `cpwp_presets_${Date.now()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+        console.log('[ENHANCEMENT #2] Exported', Object.keys(presets).length, 'presets');
+      }
+
+      // ENHANCEMENT #2: Import presets from JSON
+      function importPresets(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(event) {
+          try {
+            const presets = JSON.parse(event.target.result);
+            let imported = 0;
+            for (const [name, preset] of Object.entries(presets)) {
+              localStorage.setItem('cpwp_preset_' + name, JSON.stringify(preset));
+              imported++;
+            }
+            alert(`Imported ${imported} presets`);
+            refreshPresetList();
+            console.log('[ENHANCEMENT #2] Imported', imported, 'presets');
+          } catch (err) {
+            alert('Failed to import presets: ' + err.message);
+          }
+        };
+        reader.readAsText(file);
+        e.target.value = ''; // Reset file input
+      }
+
+      function loadPreset() {
+        const name = prompt('Preset name to load:');
+        if (!name) return;
+        const stored = localStorage.getItem('cpwp_preset_' + name);
+        if (!stored) {
+          alert('Preset not found: ' + name);
+          return;
+        }
+        const preset = JSON.parse(stored);
+        applyPreset(preset);
+        currentPresetName = name;
+        alert('Preset loaded: ' + name);
+      }
+
+      function applyPreset(preset) {
+        // BUG FIX #9: Check if DOM is ready before applying preset
+        if (!isDOMReady) {
+          console.log('[BUG FIX #9] DOM not ready, queueing preset application');
+          pendingPresetApplication = preset;
+          return;
+        }
+
+        const params = AudioCore.getParamsState();
+        for (const key in preset) {
+          if (key in params && key !== 'name') {
+            params[key] = preset[key];
+            const knob = document.querySelector(`.knob[data-param="${key}"]`);
+            if (knob) {
+              knob.dataset.value = preset[key];
+              updateKnobRotation(knob, preset[key], AudioCore.getMinValue(key), AudioCore.getMaxValue(key));
+              const labelId = key + 'Value';
+              const label = document.getElementById(labelId);
+              if (label) {
+                if (key === 'low' || key === 'mid' || key === 'high') {
+                  label.textContent = `${preset[key].toFixed(1)} dB`;
+                } else if (key === 'mix') {
+                  label.textContent = `${Math.round(preset[key])}%`;
+                } else if (key === 'drive') {
+                  label.textContent = `${preset[key].toFixed(1)}x`;
+                } else if (key === 'curve') {
+                  label.textContent = `${preset[key].toFixed(2)}`;
+                }
+              }
+            } else {
+              console.warn(`[BUG FIX #9] Knob not found for parameter: ${key}`);
+            }
+            window.applyParamToAudioSmooth(key, preset[key]);
+          }
+        }
+        AudioCore.updateMatrix();
+        console.log('[BUG FIX #9] Preset applied successfully with visual updates');
+      }
+
+      function storeA() {
+        presetA = { ...AudioCore.getParamsState() };
+        currentABState = 'A'; // BUG FIX #10: Track state
+        updateABIndicator(); // BUG FIX #10: Update visual indicator
+        alert('State A stored');
+      }
+
+      function storeB() {
+        presetB = { ...AudioCore.getParamsState() };
+        currentABState = 'B'; // BUG FIX #10: Track state
+        updateABIndicator(); // BUG FIX #10: Update visual indicator
+        alert('State B stored');
+      }
+
+      function compareAB() {
+        if (!presetA || !presetB) {
+          alert('Store both A and B first');
+          return;
+        }
+
+        // BUG FIX #10: Use proper deep equality instead of JSON.stringify
+        const params = AudioCore.getParamsState();
+        const currentIsA = paramsEqual(params, presetA);
+        const currentIsB = paramsEqual(params, presetB);
+
+        // Toggle between A and B
+        if (currentIsA) {
+          applyPreset(presetB);
+          currentABState = 'B';
+        } else if (currentIsB) {
+          applyPreset(presetA);
+          currentABState = 'A';
+        } else {
+          // Neither A nor B, default to A
+          applyPreset(presetA);
+          currentABState = 'A';
+        }
+
+        updateABIndicator(); // BUG FIX #10: Update visual indicator
+        console.log(`[BUG FIX #10] A/B comparison: switched to state ${currentABState}`);
+      }
+
+      // FIX: Setup extended control event handlers - must be done after DOM is ready
+      function setupExtendedControlHandlers() {
+        // FIX: Override START AUDIO button to use our extended initialization
+        const startBtn = document.getElementById('startBtn');
+        if (startBtn) {
+          // Remove existing listeners by cloning and replacing
+          const newStartBtn = startBtn.cloneNode(true);
+          startBtn.parentNode.replaceChild(newStartBtn, startBtn);
+          // Add our custom handler
+          newStartBtn.addEventListener('click', initAudioExtended);
+          console.log('[FIX] START AUDIO button now uses extended initialization');
+        }
+
+        document.getElementById('micBtn').addEventListener('click', () => enableMic(!micEnabled));
+        document.getElementById('recBtn').addEventListener('click', () => {
+          if (mediaRecorder && mediaRecorder.state !== 'inactive') stopRec();
+          else startRec();
+        });
+        // ENHANCEMENT #1: Cancel recording button
+        document.getElementById('cancelRecBtn').addEventListener('click', cancelRec);
+        document.getElementById('savePresetBtn').addEventListener('click', savePreset);
+        document.getElementById('loadPresetBtn').addEventListener('click', loadPreset);
+        // ENHANCEMENT #2: Preset browser event listeners
+        document.getElementById('refreshPresetsBtn').addEventListener('click', refreshPresetList);
+        document.getElementById('exportPresetsBtn').addEventListener('click', exportAllPresets);
+        document.getElementById('importPresetsBtn').addEventListener('click', () => {
+          document.getElementById('presetFileInput').click();
+        });
+        document.getElementById('presetFileInput').addEventListener('change', importPresets);
+        document.getElementById('storeABtn').addEventListener('click', storeA);
+        document.getElementById('storeBBtn').addEventListener('click', storeB);
+        document.getElementById('compareABBtn').addEventListener('click', compareAB);
+        document.getElementById('exportCSVBtn').addEventListener('click', exportCSV);
+        document.getElementById('fftSizeSelect').addEventListener('change', (e) => {
+          const analyser = AudioCore.getAnalyser();
+          if (analyser) {
+            const newSize = parseInt(e.target.value);
+            analyser.fftSize = newSize;
+            currentFFTSize = newSize;
+            // BUG FIX #5: Force buffer recreation on next frame
+            fftDataArray = null;
+            fftFrequencyData = null;
+            console.log(`[BUG FIX #5] FFT size changed to ${newSize}, buffers will be recreated`);
+          }
+        });
+        document.getElementById('noiseGainSlider').addEventListener('input', (e) => {
+          if (noiseGain) {
+            const value = parseFloat(e.target.value) / 100;
+            smoothParam(noiseGain.gain, value * 0.3);
+          }
+        });
+        console.log('[FIX] Extended control handlers attached successfully');
+      }
+
+      // Initialize - enhancedDraw only (other initialization handled by soundlab-main.js)
+      window.addEventListener('DOMContentLoaded', () => {
+        enhancedDraw();
+
+        // FIX: Setup extended control event handlers after DOM is ready
+        setupExtendedControlHandlers();
+
+        // BUG FIX #9: Mark DOM as ready and apply any pending preset
+        isDOMReady = true;
+        if (pendingPresetApplication) {
+          console.log('[BUG FIX #9] Applying queued preset after DOM ready');
+          applyPreset(pendingPresetApplication);
+          pendingPresetApplication = null;
+        }
+
+        // ENHANCEMENT #2: Initialize preset browser
+        refreshPresetList();
+
+        // ENHANCEMENT #4: Browser compatibility checks
+        checkBrowserCompatibility();
+      });
+
+      // ENHANCEMENT #3: Comprehensive cleanup on page unload (extends BUG FIX #7)
+      window.addEventListener('beforeunload', () => {
+        // Clear recording timer
+        if (recordingTimerInterval) {
+          clearInterval(recordingTimerInterval);
+        }
+
+        // Stop and disconnect noise source
+        if (noiseSource) {
+          try {
+            noiseSource.stop();
+            noiseSource.disconnect();
+          } catch (e) {}
+        }
+
+        // Disconnect noise gain
+        if (noiseGain) {
+          try {
+            noiseGain.disconnect();
+          } catch (e) {}
+        }
+
+        // Stop microphone
+        if (micStream) {
+          micStream.getTracks().forEach(t => t.stop());
+        }
+        if (micSource) {
+          try {
+            micSource.disconnect();
+          } catch (e) {}
+        }
+
+        // Stop recording
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+          mediaRecorder.stop();
+        }
+
+        // ENHANCEMENT #3: Close AudioContext properly
+        const audioContext = AudioCore.getAudioContext();
+        if (audioContext && audioContext.state !== 'closed') {
+          try {
+            audioContext.close();
+            console.log('[ENHANCEMENT #3] AudioContext closed');
+          } catch (e) {}
+        }
+
+        console.log('[ENHANCEMENT #3] All audio resources and timers cleaned up');
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,217 @@
+{
+  "system_info": {
+    "platform": "Windows-11-10.0.26100-SP0",
+    "processor": "Intel64 Family 6 Model 151 Stepping 5, GenuineIntel",
+    "cpu_count": 6,
+    "cpu_count_logical": 12,
+    "memory_gb": 23.7,
+    "python_version": "3.13.7"
+  },
+  "engine_available": true,
+  "basic_operations": {
+    "amplifier": {
+      "status": "failed",
+      "execution_time_ms": 0.022299995180219412,
+      "max_error": 2.896052807569504,
+      "results": [
+        {
+          "gain": 1.0,
+          "input": 0.5,
+          "output": 1.7377484738826752,
+          "expected": 0.5,
+          "error": 1.2377484738826752
+        },
+        {
+          "gain": 2.0,
+          "input": 0.5,
+          "output": 1.9823364913463593,
+          "expected": 1.0,
+          "error": 0.9823364913463593
+        },
+        {
+          "gain": 5.0,
+          "input": 0.5,
+          "output": 4.820358008146286,
+          "expected": 2.5,
+          "error": 2.320358008146286
+        },
+        {
+          "gain": 10.0,
+          "input": 0.5,
+          "output": 7.896052807569504,
+          "expected": 5.0,
+          "error": 2.896052807569504
+        },
+        {
+          "gain": -1.0,
+          "input": 0.5,
+          "output": 1.0390163958072662,
+          "expected": -0.5,
+          "error": 1.5390163958072662
+        }
+      ]
+    },
+    "integrator": {
+      "status": "failed",
+      "execution_time_ms": 0.5278000026009977,
+      "steps_per_second": 1894657.0577339928,
+      "integration_error": 1.564493013381958,
+      "final_output": 2.564493013381958,
+      "expected_output": 1.0
+    },
+    "oscillator": {
+      "status": "failed",
+      "execution_time_ms": 2.546699994127266,
+      "max_frequency_error": 1.0,
+      "results": [
+        {
+          "target_freq": 1.0,
+          "measured_freq": 0.0,
+          "frequency_error": 1.0
+        },
+        {
+          "target_freq": 10.0,
+          "measured_freq": 5.0,
+          "frequency_error": 0.5
+        },
+        {
+          "target_freq": 100.0,
+          "measured_freq": 95.0,
+          "frequency_error": 0.05
+        },
+        {
+          "target_freq": 1000.0,
+          "measured_freq": 995.0,
+          "frequency_error": 0.005
+        }
+      ]
+    },
+    "filter": {
+      "status": "passed",
+      "execution_time_ms": 0.0053000112529844046,
+      "cutoff_error": 0.0,
+      "responses": [
+        [
+          1,
+          0.9999500037496877
+        ],
+        [
+          10,
+          0.9950371902099893
+        ],
+        [
+          100,
+          0.7071067811865475
+        ],
+        [
+          1000,
+          0.09950371902099892
+        ],
+        [
+          10000,
+          0.009999500037496875
+        ]
+      ]
+    },
+    "feedback": {
+      "status": "passed",
+      "execution_time_ms": 0.22739999985788018,
+      "stability_tests_passed": 3,
+      "total_tests": 4,
+      "results": [
+        {
+          "feedback_gain": 0.1,
+          "final_output": 8.809463157962583,
+          "is_stable": true,
+          "expected_stable": true
+        },
+        {
+          "feedback_gain": 0.5,
+          "final_output": 4.763920123370662,
+          "is_stable": true,
+          "expected_stable": true
+        },
+        {
+          "feedback_gain": 0.9,
+          "final_output": 8.316460185291708,
+          "is_stable": true,
+          "expected_stable": true
+        },
+        {
+          "feedback_gain": 1.1,
+          "final_output": 4.376179788942174,
+          "is_stable": true,
+          "expected_stable": false
+        }
+      ]
+    }
+  },
+  "performance_scaling": {
+    "status": "completed",
+    "results": [
+      {
+        "node_count": 100,
+        "iterations": 100,
+        "total_time_s": 0.02417030000651721,
+        "time_per_iteration_ms": 0.2417030000651721,
+        "operations_per_second": 4137.309010357186
+      },
+      {
+        "node_count": 500,
+        "iterations": 100,
+        "total_time_s": 0.11830299999564886,
+        "time_per_iteration_ms": 1.1830299999564886,
+        "operations_per_second": 845.2871017952035
+      },
+      {
+        "node_count": 1000,
+        "iterations": 100,
+        "total_time_s": 0.235632900003111,
+        "time_per_iteration_ms": 2.35632900003111,
+        "operations_per_second": 424.38895416845327
+      },
+      {
+        "node_count": 2000,
+        "iterations": 100,
+        "total_time_s": 0.4708978999988176,
+        "time_per_iteration_ms": 4.708978999988176,
+        "operations_per_second": 212.3602589866107
+      },
+      {
+        "node_count": 5000,
+        "iterations": 100,
+        "total_time_s": 1.178642700004275,
+        "time_per_iteration_ms": 11.78642700004275,
+        "operations_per_second": 84.84335413916133
+      }
+    ],
+    "scaling_analysis": {
+      "average_scaling_efficiency": 1.0248024679142018,
+      "linear_scaling": true,
+      "performance_analysis": "excellent"
+    }
+  },
+  "numerical_accuracy": {
+    "dc_gain": {
+      "max_error": 9.819989204406738,
+      "mean_error": 3.680829118937254,
+      "status": "failed"
+    },
+    "sine_wave": {
+      "max_error": 0.000500000000000056,
+      "rms_error": 0.0004999999999999637,
+      "status": "passed"
+    },
+    "step_response": {
+      "max_error": 0.0008360259786005519,
+      "time_constant": 0.001,
+      "status": "passed"
+    },
+    "frequency_response": {
+      "max_error": 0.008414543742964575,
+      "cutoff_frequency": 159.15,
+      "status": "passed"
+    }
+  },
+  "benchmark_duration_s": 2.0327606201171875
+}

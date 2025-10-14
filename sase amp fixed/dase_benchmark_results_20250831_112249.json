@@ -1,0 +1,98 @@
+{
+  "system_info": {
+    "platform": "Windows-11-10.0.26100-SP0",
+    "processor": "Intel64 Family 6 Model 151 Stepping 5, GenuineIntel",
+    "cpu_count": 6,
+    "cpu_count_logical": 12,
+    "memory_gb": 23.7,
+    "python_version": "3.13.7"
+  },
+  "engine_available": false,
+  "basic_operations": {
+    "amplifier": {
+      "status": "simulated",
+      "execution_time_ms": 1.5,
+      "max_error": 0.001
+    },
+    "integrator": {
+      "status": "simulated",
+      "execution_time_ms": 5.2,
+      "steps_per_second": 192308,
+      "integration_error": 0.05
+    },
+    "oscillator": {
+      "status": "simulated",
+      "execution_time_ms": 8.7,
+      "max_frequency_error": 0.002
+    },
+    "filter": {
+      "status": "passed",
+      "execution_time_ms": 0.00809999619377777,
+      "cutoff_error": 0.0,
+      "responses": [
+        [
+          1,
+          0.9999500037496877
+        ],
+        [
+          10,
+          0.9950371902099893
+        ],
+        [
+          100,
+          0.7071067811865475
+        ],
+        [
+          1000,
+          0.09950371902099892
+        ],
+        [
+          10000,
+          0.009999500037496875
+        ]
+      ]
+    },
+    "feedback": {
+      "status": "simulated",
+      "execution_time_ms": 3.1,
+      "stability_tests_passed": 4,
+      "total_tests": 4
+    }
+  },
+  "performance_scaling": {
+    "status": "simulated",
+    "results": [
+      {
+        "node_count": 1000,
+        "time_per_iteration_ms": 2.3,
+        "operations_per_second": 435
+      }
+    ],
+    "scaling_analysis": {
+      "average_scaling_efficiency": 0.85,
+      "performance_analysis": "good"
+    }
+  },
+  "numerical_accuracy": {
+    "dc_gain": {
+      "max_error": 0.001,
+      "status": "simulated"
+    },
+    "sine_wave": {
+      "max_error": 0.0,
+      "rms_error": 0.0,
+      "status": "passed"
+    },
+    "step_response": {
+      "max_error": 0.0008360259786005519,
+      "time_constant": 0.001,
+      "status": "passed"
+    },
+    "frequency_response": {
+      "max_error": 0.008414543742964575,
+      "cutoff_frequency": 159.15,
+      "status": "passed"
+    }
+  },
+  "benchmark_duration_s": 0.0006291866302490234
+}

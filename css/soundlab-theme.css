@@ -1,0 +1,233 @@
+:root {
+  --color-bg: #050505;
+  --color-surface: #101010;
+  --color-panel: #161616;
+  --color-primary: #39ff14;
+  --color-primary-soft: #00cc66;
+  --color-primary-faint: rgba(57, 255, 20, 0.4);
+  --color-highlight: #00f6ff;
+  --color-border: #00ffb7;
+  --color-border-subtle: #0b3d1c;
+  --color-text: #c8ffe6;
+  --color-muted: #7cf5b6;
+  --font-body: "Courier New", Courier, monospace;
+  --shadow-glow: 0 0 20px rgba(57, 255, 20, 0.35);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: 14px;
+  line-height: 1.4;
+  padding: 16px;
+}
+
+h1,
+h2,
+h3 {
+  color: var(--color-primary);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+h1 {
+  text-align: center;
+  font-size: 1.85rem;
+  margin: 0 0 12px;
+  text-shadow: var(--shadow-glow);
+}
+
+h2 {
+  font-size: 1.2rem;
+  text-align: center;
+  margin: 0 0 18px;
+}
+
+h3 {
+  font-size: 1rem;
+  margin: 0 0 14px;
+  text-align: center;
+}
+
+select,
+input,
+button,
+pre {
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+}
+
+button {
+  background: linear-gradient(135deg, var(--color-primary), #1eff8f);
+  color: #001509;
+  border: 1px solid var(--color-border);
+  padding: 10px 22px;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+  box-shadow: 0 0 12px rgba(57, 255, 20, 0.25);
+}
+
+button:hover {
+  background: linear-gradient(135deg, #58ff45, #1eff8f);
+  box-shadow: 0 0 18px rgba(57, 255, 20, 0.45);
+}
+
+button:focus-visible {
+  outline: 3px solid var(--color-highlight);
+  outline-offset: 2px;
+  box-shadow: 0 0 22px rgba(0, 246, 255, 0.4);
+}
+
+button:disabled {
+  background: #1b1b1b;
+  color: var(--color-muted);
+  border-color: #2f2f2f;
+  cursor: not-allowed;
+  box-shadow: none;
+  opacity: 0.75;
+}
+
+input,
+select {
+  background: var(--color-surface);
+  color: var(--color-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  box-shadow: inset 0 0 10px rgba(0, 255, 102, 0.15);
+}
+
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--color-highlight);
+  outline-offset: 2px;
+}
+
+pre {
+  background: var(--color-surface);
+  color: var(--color-primary);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 10px;
+  padding: 12px;
+  white-space: pre-wrap;
+}
+
+.container {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.subtitle {
+  text-align: center;
+  margin: 0 0 24px;
+  font-size: 0.85rem;
+  color: var(--color-primary-soft);
+}
+
+.dropdown-container {
+  background: var(--color-panel);
+  border: 1px solid var(--color-border-subtle);
+  border-radius: 12px;
+  padding: 14px;
+  margin-bottom: 18px;
+  box-shadow: var(--shadow-glow);
+}
+
+.dropdown-container label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--color-primary);
+  text-transform: uppercase;
+  font-size: 0.8rem;
+  letter-spacing: 1px;
+}
+
+.config-preview {
+  margin-top: 10px;
+  min-height: 80px;
+}
+
+.form-field {
+  margin-bottom: 16px;
+}
+
+.form-field__label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--color-primary-soft);
+}
+
+.form-field__control {
+  width: 100%;
+}
+
+.form-field--inline {
+  display: flex;
+  gap: 10px;
+}
+
+.form-hint {
+  font-size: 0.75rem;
+  color: var(--color-muted);
+  line-height: 1.6;
+}
+
+.panel {
+  background: var(--color-panel);
+  border: 2px solid var(--color-border);
+  border-radius: 14px;
+  padding: 20px;
+  box-shadow: var(--shadow-glow);
+}
+
+.panel--spaced {
+  margin-top: 20px;
+}
+
+.panel--margin-bottom {
+  margin-bottom: 24px;
+}
+
+.input-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.is-hidden {
+  display: none !important;
+}
+
+@media (max-width: 768px) {
+  body {
+    padding: 12px;
+  }
+
+  h1 {
+    font-size: 1.5rem;
+  }
+
+  h2 {
+    font-size: 1.05rem;
+  }
+}

@@ -1,0 +1,78 @@
+{
+  "run_id": "phi_tone_run_01",
+  "timestamp": "2025-10-10T14:12:33Z",
+  "input": {
+    "image_file": "happy_wave.png",
+    "audio_mode": "sonify_image",
+    "scan_mode": "radial",
+    "scan_speed": 0.8,
+    "freq_range": [
+      220,
+      1760
+    ],
+    "filter_type": "lowpass",
+    "filter_freq": 800,
+    "gain_db": -3,
+    "overtones_enabled": true
+  },
+  "emotional_perturbation": {
+    "valence": 0.45,
+    "arousal": 0.72,
+    "entropy": 0.36,
+    "phase_bias": 1.12,
+    "salience": 0.64
+  },
+  "runtime_metrics": {
+    "work_done": 38.52,
+    "force_peaks": 3,
+    "resonance_score": 0.81,
+    "hue_coherence": 0.76,
+    "phase_entropy": 0.42
+  },
+  "log_data": [
+    [
+      "t",
+      "z_real",
+      "z_imag",
+      "|z|",
+      "arg(z)",
+      "\u03a8_brightness",
+      "\u03a8_hue",
+      "entropy",
+      "work"
+    ],
+    [
+      0.0,
+      0.0,
+      1.0,
+      1.0,
+      1.57,
+      0.75,
+      0.25,
+      0.31,
+      0.0
+    ],
+    [
+      0.1,
+      0.15,
+      0.98,
+      0.99,
+      1.42,
+      0.77,
+      0.28,
+      0.32,
+      0.1
+    ],
+    [
+      0.2,
+      0.31,
+      0.95,
+      0.99,
+      1.25,
+      0.81,
+      0.35,
+      0.35,
+      0.3
+    ]
+  ]
+}
