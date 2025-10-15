@@ -253,6 +253,89 @@ class SoundlabServer:
             """WebSocket endpoint for real-time metrics (30 Hz)"""
             await self.metrics_streamer.handle_websocket(websocket)
 
+        # UI Control WebSocket endpoint
+        @self.app.websocket("/ws/ui")
+        async def websocket_ui_control(websocket):
+            """WebSocket endpoint for real-time UI parameter control"""
+            from fastapi import WebSocket, WebSocketDisconnect
+            import json
+            import time
+
+            await websocket.accept()
+            print("[Main] UI control WebSocket connected")
+
+            # Track last update time for rate limiting (10 Hz max)
+            last_update_time = 0.0
+            MIN_UPDATE_INTERVAL = 0.1  # 100ms = 10 Hz
+
+            try:
+                # Send initial parameter state
+                initial_params = self.audio_server.get_current_parameters()
+                await websocket.send_json({
+                    "type": "state",
+                    "data": initial_params
+                })
+
+                # Message loop
+                while True:
+                    # Receive message from client
+                    message = await websocket.receive_text()
+                    data = json.loads(message)
+
+                    msg_type = data.get("type")
+
+                    if msg_type == "set_param":
+                        # Rate limiting check
+                        current_time = time.time()
+                        if current_time - last_update_time < MIN_UPDATE_INTERVAL:
+                            # Skip update if too frequent
+                            continue
+
+                        # Extract parameters
+                        param_type = data.get("param_type", "channel")  # 'channel', 'global', 'phi'
+                        channel = data.get("channel")  # None for global params
+                        param_name = data.get("param")
+                        value = data.get("value")
+
+                        # Update parameter
+                        success = self.audio_server.update_parameter(
+                            param_type=param_type,
+                            channel=channel,
+                            param_name=param_name,
+                            value=value
+                        )
+
+                        # Send acknowledgment
+                        await websocket.send_json({
+                            "type": "param_updated",
+                            "success": success,
+                            "param_type": param_type,
+                            "channel": channel,
+                            "param": param_name,
+                            "value": value
+                        })
+
+                        last_update_time = current_time
+
+                    elif msg_type == "get_state":
+                        # Send current parameter state
+                        current_params = self.audio_server.get_current_parameters()
+                        await websocket.send_json({
+                            "type": "state",
+                            "data": current_params
+                        })
+
+                    elif msg_type == "ping":
+                        # Respond to ping
+                        await websocket.send_json({"type": "pong"})
+
+            except WebSocketDisconnect:
+                print("[Main] UI control WebSocket disconnected")
+            except Exception as e:
+                print(f"[Main] UI control WebSocket error: {e}")
+                import traceback
+                traceback.print_exc()
+
     def _mount_static_files(self):
         """Mount static file directories"""
         # Mount frontend files if they exist
@@ -306,6 +389,7 @@ class SoundlabServer:
         print("")
         print("  WS   /ws/metrics                    - Metrics stream (30 Hz)")
         print("  WS   /ws/latency                    - Latency stream (10 Hz)")
+        print("  WS   /ws/ui                         - UI control (bidirectional)")
         print("=" * 60)
         print("\nPress Ctrl+C to stop server")
         print("=" * 60)

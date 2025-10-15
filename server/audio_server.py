@@ -529,6 +529,114 @@ class AudioServer:
         except Empty:
             return None
 
+    def update_parameter(self, param_type: str, channel: Optional[int], param_name: str, value: float) -> bool:
+        """
+        Update a single parameter in real-time
+
+        Args:
+            param_type: Type of parameter ('channel', 'global', 'phi')
+            channel: Channel index (0-7) for channel parameters, None for global
+            param_name: Parameter name ('frequency', 'amplitude', 'coupling_strength', etc.)
+            value: New value
+
+        Returns:
+            True if parameter was updated successfully
+        """
+        try:
+            if param_type == 'channel' and channel is not None:
+                if channel < 0 or channel >= 8:
+                    print(f"[AudioServer] Invalid channel: {channel}")
+                    return False
+
+                if param_name == 'frequency':
+                    self.processor.frequencies[channel] = float(value)
+                    return True
+
+                elif param_name == 'amplitude':
+                    self.processor.amplitudes[channel] = float(value)
+                    return True
+
+                elif param_name == 'enabled':
+                    # Store enabled state (multiply amplitude by 0 if disabled)
+                    # We'll need to track original amplitude separately
+                    if not hasattr(self, '_original_amplitudes'):
+                        self._original_amplitudes = self.processor.amplitudes.copy()
+
+                    if bool(value):
+                        # Enable: restore original amplitude
+                        self.processor.amplitudes[channel] = self._original_amplitudes[channel]
+                    else:
+                        # Disable: save original and set to 0
+                        self._original_amplitudes[channel] = self.processor.amplitudes[channel]
+                        self.processor.amplitudes[channel] = 0.0
+                    return True
+
+            elif param_type == 'global':
+                if param_name == 'coupling_strength':
+                    self.processor.coupling_strength = float(value)
+                    return True
+
+                elif param_name == 'gain':
+                    # Overall output gain (applied to downmixer)
+                    if not hasattr(self.downmixer, 'gain'):
+                        self.downmixer.gain = 1.0
+                    self.downmixer.gain = float(value)
+                    return True
+
+            elif param_type == 'phi':
+                if param_name == 'phase':
+                    # Set phase for manual mode
+                    if 'manual' in self.phi_controller.sources:
+                        self.phi_controller.sources['manual'].set_phase(float(value))
+                        return True
+
+                elif param_name == 'depth':
+                    # Set depth for manual mode
+                    if 'manual' in self.phi_controller.sources:
+                        self.phi_controller.sources['manual'].set_depth(float(value))
+                        return True
+
+                elif param_name == 'mode':
+                    # Switch phi modulation mode
+                    self.phi_controller.set_mode(str(value))
+                    return True
+
+            print(f"[AudioServer] Unknown parameter: {param_type}.{param_name}")
+            return False
+
+        except Exception as e:
+            print(f"[AudioServer] Error updating parameter: {e}")
+            traceback.print_exc()
+            return False
+
+    def get_current_parameters(self) -> Dict:
+        """
+        Get current parameter values for all channels
+
+        Returns:
+            Dictionary with all current parameter values
+        """
+        return {
+            'channels': [
+                {
+                    'index': i,
+                    'frequency': float(self.processor.frequencies[i]),
+                    'amplitude': float(self.processor.amplitudes[i]),
+                    'enabled': float(self.processor.amplitudes[i]) > 0.001
+                }
+                for i in range(8)
+            ],
+            'global': {
+                'coupling_strength': float(self.processor.coupling_strength),
+                'gain': getattr(self.downmixer, 'gain', 1.0)
+            },
+            'phi': {
+                'phase': self.phi_controller.get_current_state().phase,
+                'depth': self.phi_controller.get_current_state().depth,
+                'mode': self.phi_controller.get_current_mode()
+            }
+        }
+
 
 # Self-test function
 def _self_test():

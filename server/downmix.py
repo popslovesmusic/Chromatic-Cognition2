@@ -17,18 +17,21 @@ class StereoDownmixer:
     of the multi-channel D-ASE output while preventing clipping.
     """
 
-    def __init__(self, strategy: Literal['spatial', 'energy', 'linear', 'phi'] = 'spatial'):
+    def __init__(self, num_channels: int = 8, strategy: Literal['spatial', 'energy', 'linear', 'phi'] = 'spatial'):
         """
         Initialize downmixer
 
         Args:
+            num_channels: Number of input channels (default: 8)
             strategy: Downmix strategy
                 - 'spatial': Spatial panning with weighted coefficients
                 - 'energy': Energy-preserving (RMS-based)
                 - 'linear': Simple averaging
                 - 'phi': Golden-ratio weighted distribution
         """
+        self.num_channels = num_channels
         self.strategy = strategy
+        self.gain = 1.0  # Master output gain
         self._setup_coefficients()
 
         print(f"[StereoDownmixer] Initialized with '{strategy}' strategy")
@@ -115,6 +118,10 @@ class StereoDownmixer:
         left /= self.normalization
         right /= self.normalization
 
+        # Apply master gain
+        left *= self.gain
+        right *= self.gain
+
         # Stack to stereo format [2, num_samples]
         stereo = np.vstack([left, right])
 
@@ -152,6 +159,34 @@ class StereoDownmixer:
 
         return stereo, monitoring
 
+    def set_strategy(self, strategy: Literal['spatial', 'energy', 'linear', 'phi']):
+        """
+        Change downmix strategy
+
+        Args:
+            strategy: New downmix strategy
+        """
+        self.strategy = strategy
+        self._setup_coefficients()
+
+    def set_weights(self, channel: Literal['L', 'R'], weights: np.ndarray):
+        """
+        Set custom weights for left or right channel
+
+        Args:
+            channel: 'L' for left or 'R' for right
+            weights: Array of weights (length must match num_channels)
+        """
+        if len(weights) != self.num_channels:
+            raise ValueError(f"Expected {self.num_channels} weights, got {len(weights)}")
+
+        if channel == 'L':
+            self.left_weights = np.array(weights, dtype=np.float32)
+        elif channel == 'R':
+            self.right_weights = np.array(weights, dtype=np.float32)
+        else:
+            raise ValueError(f"Invalid channel: {channel}. Use 'L' or 'R'")
+
     def get_strategy_info(self) -> dict:
         """
         Get information about current downmix strategy
@@ -164,6 +199,7 @@ class StereoDownmixer:
             'left_weights': self.left_weights.tolist(),
             'right_weights': self.right_weights.tolist(),
             'normalization': float(self.normalization),
+            'gain': float(self.gain),
             'total_left_gain': float(np.sum(self.left_weights)),
             'total_right_gain': float(np.sum(self.right_weights))
         }
