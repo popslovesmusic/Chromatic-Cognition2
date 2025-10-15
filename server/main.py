@@ -33,6 +33,7 @@ from preset_api import create_preset_api
 from latency_api import create_latency_api, LatencyStreamer
 from auto_phi import AutoPhiLearner, AutoPhiConfig
 from criticality_balancer import CriticalityBalancer, CriticalityBalancerConfig
+from state_memory import StateMemory, StateMemoryConfig
 
 
 class SoundlabServer:
@@ -56,7 +57,8 @@ class SoundlabServer:
                  enable_logging: bool = True,
                  enable_cors: bool = True,
                  enable_auto_phi: bool = False,
-                 enable_criticality_balancer: bool = False):
+                 enable_criticality_balancer: bool = False,
+                 enable_state_memory: bool = False):
         """
         Initialize Soundlab server
 
@@ -166,6 +168,42 @@ class SoundlabServer:
                         )
 
         self.criticality_balancer.update_callback = criticality_balancer_update_callback
+
+        # Initialize State Memory (Feature 013)
+        print("\n[Main] Initializing State Memory...")
+        state_memory_config = StateMemoryConfig(
+            enabled=enable_state_memory,
+            buffer_size=256,
+            trend_window=30,
+            enable_logging=enable_logging
+        )
+        self.state_memory = StateMemory(state_memory_config)
+
+        # Wire State Memory to metrics stream and Auto-Phi Learner
+        def metrics_callback_with_memory(frame):
+            # Send to metrics streamer
+            asyncio.run(self.metrics_streamer.enqueue_frame(frame))
+            # Send to auto-phi learner
+            self.auto_phi_learner.process_metrics(frame)
+            # Send to criticality balancer
+            self.criticality_balancer.process_metrics(frame)
+            # Send to state memory (FR-002)
+            if self.state_memory.config.enabled:
+                criticality = getattr(frame, 'criticality', 1.0)
+                coherence = getattr(frame, 'phase_coherence', 0.0)
+                ici = getattr(frame, 'ici', 0.0)
+                phi_depth = self.auto_phi_learner.state.phi_depth
+                phi_phase = self.auto_phi_learner.state.phi_phase
+                self.state_memory.add_frame(criticality, coherence, ici, phi_depth, phi_phase)
+
+        self.audio_server.metrics_callback = metrics_callback_with_memory
+
+        # Wire State Memory bias to Auto-Phi Learner (FR-004)
+        def state_memory_bias_callback(bias: float):
+            """Feed predictive bias from State Memory to Auto-Phi Learner"""
+            self.auto_phi_learner.external_bias = bias
+
+        self.state_memory.bias_callback = state_memory_bias_callback
 
         # Initialize latency streamer (will be created by latency API)
         self.latency_streamer: Optional[LatencyStreamer] = None
@@ -389,6 +427,50 @@ class SoundlabServer:
         async def export_criticality_balancer_logs():
             """Export Criticality Balancer performance logs"""
             return self.criticality_balancer.export_logs()
+
+        # State Memory API endpoints (Feature 013)
+        @self.app.get("/api/state-memory/status")
+        async def get_state_memory_status():
+            """Get State Memory status (FR-005)"""
+            return {
+                "enabled": self.state_memory.config.enabled,
+                "buffer_size": len(self.state_memory.buffer),
+                "max_buffer_size": self.state_memory.config.buffer_size,
+                "total_frames": self.state_memory.total_frames,
+                "current_bias": self.state_memory.current_bias,
+                "smoothed_values": self.state_memory.get_smoothed_values()
+            }
+
+        @self.app.post("/api/state-memory/enable")
+        async def set_state_memory_enabled(enabled: bool):
+            """Enable or disable State Memory (FR-006, SC-004)"""
+            self.state_memory.set_enabled(enabled)
+            return {
+                "ok": True,
+                "enabled": self.state_memory.config.enabled,
+                "message": f"State Memory {'enabled' if enabled else 'disabled'}"
+            }
+
+        @self.app.get("/api/state-memory/stats")
+        async def get_state_memory_stats():
+            """Get State Memory statistics (FR-005)"""
+            return self.state_memory.get_statistics()
+
+        @self.app.get("/api/state-memory/trend")
+        async def get_state_memory_trend():
+            """Get trend summary (FR-003, FR-005)"""
+            return self.state_memory.get_trend_summary()
+
+        @self.app.post("/api/state-memory/reset")
+        async def reset_state_memory_buffer():
+            """Reset State Memory buffer (FR-007)"""
+            self.state_memory.reset_buffer()
+            return {"ok": True, "message": "Buffer reset"}
+
+        @self.app.get("/api/state-memory/buffer")
+        async def export_state_memory_buffer():
+            """Export State Memory buffer for analysis"""
+            return self.state_memory.export_buffer()
 
         # Metrics WebSocket endpoint
         @self.app.websocket("/ws/metrics")
@@ -676,6 +758,7 @@ def main():
     parser.add_argument("--no-logging", action="store_true", help="Disable metrics/latency logging")
     parser.add_argument("--enable-auto-phi", action="store_true", help="Enable Auto-Phi Learner (adaptive criticality control)")
     parser.add_argument("--enable-criticality-balancer", action="store_true", help="Enable Criticality Balancer (adaptive coupling and amplitude)")
+    parser.add_argument("--enable-state-memory", action="store_true", help="Enable State Memory (temporal memory and prediction)")
     parser.add_argument("--list-devices", action="store_true", help="List available audio devices and exit")
 
     args = parser.parse_args()
@@ -698,7 +781,8 @@ def main():
         audio_output_device=args.output_device,
         enable_logging=not args.no_logging,
         enable_auto_phi=args.enable_auto_phi,
-        enable_criticality_balancer=args.enable_criticality_balancer
+        enable_criticality_balancer=args.enable_criticality_balancer,
+        enable_state_memory=args.enable_state_memory
     )
 
     server.run(

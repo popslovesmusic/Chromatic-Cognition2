@@ -128,6 +128,9 @@ class AutoPhiLearner:
         # Callback for parameter updates (FR-005)
         self.update_callback: Optional[Callable[[str, float], None]] = None
 
+        # External bias (for Feature 013: State Memory integration)
+        self.external_bias: float = 0.0
+
         # Task control
         self.running = False
         self.task: Optional[asyncio.Task] = None
@@ -245,6 +248,9 @@ class AutoPhiLearner:
 
         # Proportional control
         depth_delta = self.config.k_depth * criticality_error * dt
+
+        # Add external bias (Feature 013: predictive feed-forward)
+        depth_delta += self.external_bias
 
         new_depth = self.state.phi_depth + depth_delta
 
