@@ -322,8 +322,64 @@ class SoundlabServer:
                         current_params = self.audio_server.get_current_parameters()
                         await websocket.send_json({
                             "type": "state",
-                            "data": current_params
+                            "parameters": current_params
                         })
+
+                    elif msg_type == "apply_preset":
+                        # Apply entire preset (Feature 010: Preset Browser)
+                        preset_name = data.get("preset_name", "Unknown")
+                        parameters = data.get("parameters", {})
+
+                        try:
+                            # Apply all channel parameters
+                            if "channels" in parameters:
+                                for channel_idx, channel_params in parameters["channels"].items():
+                                    channel_idx = int(channel_idx)
+                                    for param_name, value in channel_params.items():
+                                        self.audio_server.update_parameter(
+                                            param_type="channel",
+                                            channel=channel_idx,
+                                            param_name=param_name,
+                                            value=value
+                                        )
+
+                            # Apply global parameters
+                            if "global" in parameters:
+                                for param_name, value in parameters["global"].items():
+                                    self.audio_server.update_parameter(
+                                        param_type="global",
+                                        channel=None,
+                                        param_name=param_name,
+                                        value=value
+                                    )
+
+                            # Apply phi parameters
+                            if "phi" in parameters:
+                                for param_name, value in parameters["phi"].items():
+                                    self.audio_server.update_parameter(
+                                        param_type="phi",
+                                        channel=None,
+                                        param_name=param_name,
+                                        value=value
+                                    )
+
+                            # Send confirmation
+                            await websocket.send_json({
+                                "type": "preset_applied",
+                                "success": True,
+                                "preset_name": preset_name
+                            })
+
+                            print(f"[Main] Applied preset: {preset_name}")
+
+                        except Exception as e:
+                            print(f"[Main] Error applying preset: {e}")
+                            await websocket.send_json({
+                                "type": "preset_applied",
+                                "success": False,
+                                "preset_name": preset_name,
+                                "error": str(e)
+                            })
 
                     elif msg_type == "ping":
                         # Respond to ping
