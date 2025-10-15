@@ -1,0 +1,70 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.whl
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+.venv/
+venv/
+ENV/
+env/
+
+# Logs
+logs/
+*.log
+*.csv
+*.jsonl
+*.gz
+
+# Presets (optional - uncomment if you don't want to track user presets)
+# presets/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Claude Code local settings
+.claude/settings.local.json
+
+# C++ build artifacts
+*.o
+*.obj
+*.exe
+*.dll
+*.dylib
+*.so
+*.a
+*.lib
+*.pyd
+*.pdb
+
+# Audio files (if generated)
+*.wav
+*.mp3
+*.flac
+*.aiff
+
+# Temporary files
+*.tmp
+*.bak
+*.cache
+.cache/
+
+# Node modules (if you add npm packages later)
+node_modules/
+package-lock.json
+
+# OS specific
+Thumbs.db
+desktop.ini
