@@ -14,6 +14,7 @@ import numpy as np
 from scipy import signal
 from typing import Dict, Optional, Tuple
 import time
+from ici_engine import IntegratedChromaticInformation, ICIConfig
 
 # Add sase amp fixed to path to import dase_engine
 DASE_PATH = os.path.join(os.path.dirname(__file__), '..', 'sase amp fixed')
@@ -79,6 +80,17 @@ class ChromaticFieldProcessor:
 
         # Multi-channel output buffer [channels, samples]
         self.output_buffer = np.zeros((self.num_channels, self.block_size), dtype=np.float32)
+
+        # Initialize ICI Engine (Feature 014)
+        ici_config = ICIConfig(
+            num_channels=self.num_channels,
+            fft_size=self.block_size,
+            smoothing_alpha=0.2,
+            use_rfft=True,
+            output_matrix=False,
+            enable_logging=False
+        )
+        self.ici_engine = IntegratedChromaticInformation(ici_config)
 
     def processBlock(self,
                      input_block: np.ndarray,
@@ -191,14 +203,9 @@ class ChromaticFieldProcessor:
             output: float32[num_channels, block_size] multi-channel signal
         """
         try:
-            # ICI: Mean cross-correlation between all channel pairs
-            ici_values = []
-            for i in range(self.num_channels):
-                for j in range(i + 1, self.num_channels):
-                    corr = np.corrcoef(output[i], output[j])[0, 1]
-                    if not np.isnan(corr):
-                        ici_values.append(abs(corr))
-            self.last_metrics['ici'] = np.mean(ici_values) if ici_values else 0.0
+            # ICI: Use full spectral-phase integration engine (Feature 014)
+            ici_value, _ = self.ici_engine.process_block(output)
+            self.last_metrics['ici'] = ici_value
 
             # Phase Coherence: Using Hilbert transform
             # (Simplified for real-time: just measure phase variance)
