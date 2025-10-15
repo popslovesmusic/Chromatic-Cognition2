@@ -1,0 +1,32 @@
+# Soundlab Audio Engine Server Requirements
+# Python 3.9+
+
+# Web server and WebSocket
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+websockets==12.0
+python-multipart==0.0.6
+
+# Audio processing
+sounddevice==0.4.6
+numpy==1.24.3
+scipy==1.11.3
+
+# C++ bindings (requires local build)
+pybind11==2.11.1
+
+# Utilities
+python-dotenv==1.0.0
+aiofiles==23.2.1
+
+# Testing
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-timeout==2.2.0
+
+# Monitoring
+psutil==5.9.6
+
+# MIDI support (optional, for Φ-modulator MIDI mode)
+mido==1.3.0
+python-rtmidi==1.5.8
