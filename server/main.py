@@ -31,6 +31,7 @@ from ab_snapshot import ABSnapshot
 from metrics_streamer import MetricsStreamer
 from preset_api import create_preset_api
 from latency_api import create_latency_api, LatencyStreamer
+from auto_phi import AutoPhiLearner, AutoPhiConfig
 
 
 class SoundlabServer:
@@ -52,7 +53,8 @@ class SoundlabServer:
                  audio_input_device: Optional[int] = None,
                  audio_output_device: Optional[int] = None,
                  enable_logging: bool = True,
-                 enable_cors: bool = True):
+                 enable_cors: bool = True,
+                 enable_auto_phi: bool = False):
         """
         Initialize Soundlab server
 
@@ -90,10 +92,36 @@ class SoundlabServer:
         print("\n[Main] Initializing metrics streamer...")
         self.metrics_streamer = MetricsStreamer()
 
-        # Wire audio server metrics to streamer
-        self.audio_server.metrics_callback = lambda frame: asyncio.run(
-            self.metrics_streamer.enqueue_frame(frame)
+        # Initialize Auto-Φ Learner (Feature 011)
+        print("\n[Main] Initializing Auto-Φ Learner...")
+        auto_phi_config = AutoPhiConfig(
+            enabled=enable_auto_phi,
+            k_depth=0.25,
+            gamma_phase=0.1,
+            enable_logging=enable_logging
         )
+        self.auto_phi_learner = AutoPhiLearner(auto_phi_config)
+
+        # Wire audio server metrics to streamer and auto-phi learner
+        def metrics_callback(frame):
+            # Send to metrics streamer
+            asyncio.run(self.metrics_streamer.enqueue_frame(frame))
+            # Send to auto-phi learner
+            self.auto_phi_learner.process_metrics(frame)
+
+        self.audio_server.metrics_callback = metrics_callback
+
+        # Wire Auto-Φ Learner parameter updates to audio server (FR-005)
+        def auto_phi_update_callback(param_name: str, value: float):
+            """Callback for Auto-Φ Learner to update parameters"""
+            self.audio_server.update_parameter(
+                param_type='phi',
+                channel=None,
+                param_name=param_name.replace('phi_', ''),  # Remove 'phi_' prefix
+                value=value
+            )
+
+        self.auto_phi_learner.update_callback = auto_phi_update_callback
 
         # Initialize latency streamer (will be created by latency API)
         self.latency_streamer: Optional[LatencyStreamer] = None
@@ -246,6 +274,45 @@ class SoundlabServer:
                 return {"ok": True, "message": "Preset applied"}
             except Exception as e:
                 return {"ok": False, "message": str(e)}
+
+        # Auto-Φ Learner API endpoints (Feature 011)
+        @self.app.get("/api/auto-phi/status")
+        async def get_auto_phi_status():
+            """Get Auto-Φ Learner status"""
+            return {
+                "enabled": self.auto_phi_learner.config.enabled,
+                "phi_depth": self.auto_phi_learner.state.phi_depth,
+                "phi_phase": self.auto_phi_learner.state.phi_phase,
+                "criticality": self.auto_phi_learner.state.criticality,
+                "coherence": self.auto_phi_learner.state.coherence,
+                "settled": self.auto_phi_learner.state.settled
+            }
+
+        @self.app.post("/api/auto-phi/enable")
+        async def set_auto_phi_enabled(enabled: bool):
+            """Enable or disable Auto-Φ Learner (FR-006, SC-004)"""
+            self.auto_phi_learner.set_enabled(enabled)
+            return {
+                "ok": True,
+                "enabled": self.auto_phi_learner.config.enabled,
+                "message": f"Auto-Φ Learner {'enabled' if enabled else 'disabled'}"
+            }
+
+        @self.app.get("/api/auto-phi/stats")
+        async def get_auto_phi_stats():
+            """Get Auto-Φ Learner performance statistics (FR-007)"""
+            return self.auto_phi_learner.get_statistics()
+
+        @self.app.post("/api/auto-phi/reset")
+        async def reset_auto_phi_stats():
+            """Reset Auto-Φ Learner statistics"""
+            self.auto_phi_learner.reset_statistics()
+            return {"ok": True, "message": "Statistics reset"}
+
+        @self.app.get("/api/auto-phi/logs")
+        async def export_auto_phi_logs():
+            """Export Auto-Φ Learner performance logs"""
+            return self.auto_phi_learner.export_logs()
 
         # Metrics WebSocket endpoint
         @self.app.websocket("/ws/metrics")
@@ -531,6 +598,7 @@ def main():
     parser.add_argument("--auto-start-audio", action="store_true", help="Automatically start audio processing")
     parser.add_argument("--calibrate", action="store_true", help="Run latency calibration on startup")
     parser.add_argument("--no-logging", action="store_true", help="Disable metrics/latency logging")
+    parser.add_argument("--enable-auto-phi", action="store_true", help="Enable Auto-Φ Learner (adaptive criticality control)")
     parser.add_argument("--list-devices", action="store_true", help="List available audio devices and exit")
 
     args = parser.parse_args()
@@ -551,7 +619,8 @@ def main():
         port=args.port,
         audio_input_device=args.input_device,
         audio_output_device=args.output_device,
-        enable_logging=not args.no_logging
+        enable_logging=not args.no_logging,
+        enable_auto_phi=args.enable_auto_phi
     )
 
     server.run(
