@@ -32,6 +32,7 @@ from metrics_streamer import MetricsStreamer
 from preset_api import create_preset_api
 from latency_api import create_latency_api, LatencyStreamer
 from auto_phi import AutoPhiLearner, AutoPhiConfig
+from criticality_balancer import CriticalityBalancer, CriticalityBalancerConfig
 
 
 class SoundlabServer:
@@ -54,7 +55,8 @@ class SoundlabServer:
                  audio_output_device: Optional[int] = None,
                  enable_logging: bool = True,
                  enable_cors: bool = True,
-                 enable_auto_phi: bool = False):
+                 enable_auto_phi: bool = False,
+                 enable_criticality_balancer: bool = False):
         """
         Initialize Soundlab server
 
@@ -122,6 +124,48 @@ class SoundlabServer:
             )
 
         self.auto_phi_learner.update_callback = auto_phi_update_callback
+
+        # Initialize Criticality Balancer (Feature 012)
+        print("\n[Main] Initializing Criticality Balancer...")
+        criticality_balancer_config = CriticalityBalancerConfig(
+            enabled=enable_criticality_balancer,
+            beta_coupling=0.1,
+            delta_amplitude=0.05,
+            enable_logging=enable_logging
+        )
+        self.criticality_balancer = CriticalityBalancer(criticality_balancer_config)
+
+        # Wire Criticality Balancer to metrics stream
+        def metrics_callback_extended(frame):
+            # Send to metrics streamer
+            asyncio.run(self.metrics_streamer.enqueue_frame(frame))
+            # Send to auto-phi learner
+            self.auto_phi_learner.process_metrics(frame)
+            # Send to criticality balancer
+            self.criticality_balancer.process_metrics(frame)
+
+        self.audio_server.metrics_callback = metrics_callback_extended
+
+        # Wire Criticality Balancer batch updates to audio server (FR-006)
+        def criticality_balancer_update_callback(update_data):
+            """Callback for Criticality Balancer batch updates"""
+            if update_data.get('type') == 'update_coupling':
+                # Apply coupling matrix
+                coupling_matrix = update_data.get('coupling_matrix')
+                amplitudes = update_data.get('amplitudes')
+
+                # Update coupling in audio server (if supported)
+                # For now, just update amplitudes
+                if amplitudes:
+                    for channel_idx, amplitude in enumerate(amplitudes):
+                        self.audio_server.update_parameter(
+                            param_type='channel',
+                            channel=channel_idx,
+                            param_name='amplitude',
+                            value=amplitude
+                        )
+
+        self.criticality_balancer.update_callback = criticality_balancer_update_callback
 
         # Initialize latency streamer (will be created by latency API)
         self.latency_streamer: Optional[LatencyStreamer] = None
@@ -313,6 +357,38 @@ class SoundlabServer:
         async def export_auto_phi_logs():
             """Export Auto-Φ Learner performance logs"""
             return self.auto_phi_learner.export_logs()
+
+        # Criticality Balancer API endpoints (Feature 012)
+        @self.app.get("/api/criticality-balancer/status")
+        async def get_criticality_balancer_status():
+            """Get Criticality Balancer status"""
+            return self.criticality_balancer.get_current_state()
+
+        @self.app.post("/api/criticality-balancer/enable")
+        async def set_criticality_balancer_enabled(enabled: bool):
+            """Enable or disable Criticality Balancer (FR-007, SC-004)"""
+            self.criticality_balancer.set_enabled(enabled)
+            return {
+                "ok": True,
+                "enabled": self.criticality_balancer.config.enabled,
+                "message": f"Criticality Balancer {'enabled' if enabled else 'disabled'}"
+            }
+
+        @self.app.get("/api/criticality-balancer/stats")
+        async def get_criticality_balancer_stats():
+            """Get Criticality Balancer performance statistics"""
+            return self.criticality_balancer.get_statistics()
+
+        @self.app.post("/api/criticality-balancer/reset")
+        async def reset_criticality_balancer_stats():
+            """Reset Criticality Balancer statistics"""
+            self.criticality_balancer.reset_statistics()
+            return {"ok": True, "message": "Statistics reset"}
+
+        @self.app.get("/api/criticality-balancer/logs")
+        async def export_criticality_balancer_logs():
+            """Export Criticality Balancer performance logs"""
+            return self.criticality_balancer.export_logs()
 
         # Metrics WebSocket endpoint
         @self.app.websocket("/ws/metrics")
@@ -598,7 +674,8 @@ def main():
     parser.add_argument("--auto-start-audio", action="store_true", help="Automatically start audio processing")
     parser.add_argument("--calibrate", action="store_true", help="Run latency calibration on startup")
     parser.add_argument("--no-logging", action="store_true", help="Disable metrics/latency logging")
-    parser.add_argument("--enable-auto-phi", action="store_true", help="Enable Auto-Φ Learner (adaptive criticality control)")
+    parser.add_argument("--enable-auto-phi", action="store_true", help="Enable Auto-Phi Learner (adaptive criticality control)")
+    parser.add_argument("--enable-criticality-balancer", action="store_true", help="Enable Criticality Balancer (adaptive coupling and amplitude)")
     parser.add_argument("--list-devices", action="store_true", help="List available audio devices and exit")
 
     args = parser.parse_args()
@@ -620,7 +697,8 @@ def main():
         audio_input_device=args.input_device,
         audio_output_device=args.output_device,
         enable_logging=not args.no_logging,
-        enable_auto_phi=args.enable_auto_phi
+        enable_auto_phi=args.enable_auto_phi,
+        enable_criticality_balancer=args.enable_criticality_balancer
     )
 
     server.run(
