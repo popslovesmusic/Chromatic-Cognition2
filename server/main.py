@@ -38,6 +38,7 @@ from state_classifier import StateClassifierGraph, StateClassifierConfig
 from predictive_model import PredictiveModel, PredictiveModelConfig
 from session_recorder import SessionRecorder, SessionRecorderConfig
 from timeline_player import TimelinePlayer, TimelinePlayerConfig
+from data_exporter import DataExporter, ExportConfig, ExportRequest, ExportFormat
 
 
 class SoundlabServer:
@@ -66,7 +67,8 @@ class SoundlabServer:
                  enable_state_classifier: bool = False,
                  enable_predictive_model: bool = False,
                  enable_session_recorder: bool = True,
-                 enable_timeline_player: bool = True):
+                 enable_timeline_player: bool = True,
+                 enable_data_exporter: bool = True):
         """
         Initialize Soundlab server
 
@@ -359,6 +361,19 @@ class SoundlabServer:
             self.timeline_player = TimelinePlayer(timeline_player_config)
         else:
             self.timeline_player = None
+
+        # Initialize Data Exporter (Feature 019)
+        if enable_data_exporter:
+            print("\n[Main] Initializing Data Exporter...")
+            data_exporter_config = ExportConfig(
+                output_dir="exports",
+                enable_compression=True,
+                enable_checksum=True,
+                enable_logging=enable_logging
+            )
+            self.data_exporter = DataExporter(data_exporter_config)
+        else:
+            self.data_exporter = None
 
         # Initialize latency streamer (will be created by latency API)
         self.latency_streamer: Optional[LatencyStreamer] = None
@@ -877,6 +892,83 @@ class SoundlabServer:
 
             return self.timeline_player.get_status()
 
+        # Data Exporter API endpoints (Feature 019)
+        @self.app.post("/api/export")
+        async def export_session(
+            session_path: str,
+            format: str,
+            output_name: Optional[str] = None,
+            time_range_start: Optional[float] = None,
+            time_range_end: Optional[float] = None,
+            compress: bool = True
+        ):
+            """
+            Export session to specified format (FR-005)
+
+            Args:
+                session_path: Path to session folder
+                format: Export format (csv, json, hdf5, mp4)
+                output_name: Optional output filename (without extension)
+                time_range_start: Optional start time in seconds (FR-004)
+                time_range_end: Optional end time in seconds (FR-004)
+                compress: Enable ZIP compression (FR-007)
+            """
+            if not self.data_exporter:
+                return {"ok": False, "message": "Data Exporter not enabled"}
+
+            try:
+                # Parse format
+                export_format = ExportFormat(format.lower())
+
+                # Create time range tuple if specified
+                time_range = None
+                if time_range_start is not None and time_range_end is not None:
+                    time_range = (time_range_start, time_range_end)
+
+                # Create export request
+                request = ExportRequest(
+                    session_path=session_path,
+                    format=export_format,
+                    output_name=output_name,
+                    time_range=time_range,
+                    compress=compress
+                )
+
+                # Perform export
+                result = self.data_exporter.export_session(request)
+
+                return result
+
+            except ValueError as e:
+                return {"ok": False, "message": f"Invalid format: {format}"}
+            except Exception as e:
+                return {"ok": False, "message": str(e)}
+
+        @self.app.get("/api/export/list")
+        async def list_exported_files():
+            """List all exported files"""
+            if not self.data_exporter:
+                return {"ok": False, "message": "Data Exporter not enabled"}
+
+            exports = self.data_exporter.list_exports()
+            return {
+                "ok": True,
+                "exports": exports,
+                "count": len(exports)
+            }
+
+        @self.app.get("/api/export/stats")
+        async def get_export_statistics():
+            """Get export statistics"""
+            if not self.data_exporter:
+                return {"ok": False, "message": "Data Exporter not enabled"}
+
+            stats = self.data_exporter.get_statistics()
+            return {
+                "ok": True,
+                **stats
+            }
+
         # Metrics WebSocket endpoint
         @self.app.websocket("/ws/metrics")
         async def websocket_metrics(websocket):
@@ -1224,6 +1316,7 @@ def main():
     parser.add_argument("--enable-predictive-model", action="store_true", help="Enable Predictive Model (next-state forecasting)")
     parser.add_argument("--disable-session-recorder", action="store_true", help="Disable Session Recorder (recording enabled by default)")
     parser.add_argument("--disable-timeline-player", action="store_true", help="Disable Timeline Player (playback enabled by default)")
+    parser.add_argument("--disable-data-exporter", action="store_true", help="Disable Data Exporter (export enabled by default)")
     parser.add_argument("--list-devices", action="store_true", help="List available audio devices and exit")
 
     args = parser.parse_args()
@@ -1251,7 +1344,8 @@ def main():
         enable_state_classifier=args.enable_state_classifier,
         enable_predictive_model=args.enable_predictive_model,
         enable_session_recorder=not args.disable_session_recorder,
-        enable_timeline_player=not args.disable_timeline_player
+        enable_timeline_player=not args.disable_timeline_player,
+        enable_data_exporter=not args.disable_data_exporter
     )
 
     server.run(
