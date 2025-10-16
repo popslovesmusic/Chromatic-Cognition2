@@ -45,6 +45,8 @@ from cluster_monitor import ClusterMonitor, ClusterMonitorConfig
 from hw_interface import HardwareInterface
 from hybrid_bridge import HybridBridge
 from hybrid_node import HybridNode, HybridNodeConfig, PhiSource, HybridMetrics
+from session_comparator import SessionComparator, SessionStats, ComparisonResult
+from correlation_analyzer import CorrelationAnalyzer, CorrelationMatrix
 
 
 class SoundlabServer:
@@ -505,6 +507,11 @@ class SoundlabServer:
             self.hybrid_node.register_metrics_callback(hybrid_metrics_callback)
         else:
             self.hybrid_node = None
+
+        # Initialize Analytics Components (Feature 015)
+        print("\n[Main] Initializing Multi-Session Analytics...")
+        self.session_comparator = SessionComparator()
+        self.correlation_analyzer = CorrelationAnalyzer()
 
         # Initialize latency streamer (will be created by latency API)
         self.latency_streamer: Optional[LatencyStreamer] = None
@@ -2096,6 +2103,241 @@ class SoundlabServer:
                 "ok": success,
                 "message": f"Session loaded from {filepath}" if success else "Failed to load session",
                 "filepath": filepath
+            }
+
+        # Multi-Session Analytics API endpoints (Feature 015)
+        @self.app.post("/api/analytics/sessions/load")
+        async def load_analysis_session(filename: str):
+            """
+            Load a recorded session for analysis (FR-001, User Story 1)
+
+            Args:
+                filename: Name of session file to load
+
+            Returns:
+                Session load status and basic stats
+            """
+            if not self.session_recorder:
+                return {"ok": False, "message": "Session Recorder not enabled"}
+
+            # Load session data
+            session_data = self.session_recorder.load_session(filename)
+
+            if not session_data:
+                return {"ok": False, "message": f"Failed to load session: {filename}"}
+
+            # Extract session ID from metadata
+            metadata = session_data.get('metadata', {})
+            session_id = metadata.get('session_name', filename)
+
+            # Load into comparator
+            success_comparator = self.session_comparator.load_session(session_id, session_data)
+
+            # Load into correlation analyzer
+            self.correlation_analyzer.load_session(session_id, session_data)
+
+            if success_comparator:
+                # Get basic stats
+                stats = self.session_comparator.get_all_stats()
+                session_stats = stats.get(session_id)
+
+                return {
+                    "ok": True,
+                    "message": f"Session {session_id} loaded successfully",
+                    "session_id": session_id,
+                    "stats": {
+                        "duration": session_stats.duration,
+                        "sample_count": session_stats.sample_count,
+                        "mean_ici": session_stats.mean_ici,
+                        "mean_phi": session_stats.mean_phi
+                    } if session_stats else {}
+                }
+            else:
+                return {"ok": False, "message": "Failed to load session into analytics"}
+
+        @self.app.post("/api/analytics/sessions/unload")
+        async def unload_analysis_session(session_id: str):
+            """
+            Unload a session from analysis (SC-001: Memory management)
+
+            Args:
+                session_id: Session identifier to unload
+            """
+            self.session_comparator.unload_session(session_id)
+            return {
+                "ok": True,
+                "message": f"Session {session_id} unloaded"
+            }
+
+        @self.app.get("/api/analytics/sessions")
+        async def get_loaded_sessions():
+            """
+            Get list of loaded sessions with statistics (FR-002, User Story 1)
+
+            Returns:
+                List of loaded sessions with their statistics
+            """
+            stats = self.session_comparator.get_all_stats()
+
+            sessions_list = []
+            for session_id, session_stats in stats.items():
+                sessions_list.append({
+                    "session_id": session_id,
+                    "duration": session_stats.duration,
+                    "sample_count": session_stats.sample_count,
+                    "mean_ici": session_stats.mean_ici,
+                    "std_ici": session_stats.std_ici,
+                    "mean_coherence": session_stats.mean_coherence,
+                    "mean_criticality": session_stats.mean_criticality,
+                    "mean_phi": session_stats.mean_phi
+                })
+
+            # Get memory usage
+            memory_usage = self.session_comparator.get_memory_usage()
+
+            return {
+                "ok": True,
+                "sessions": sessions_list,
+                "count": len(sessions_list),
+                "memory_usage": memory_usage
+            }
+
+        @self.app.post("/api/analytics/compare")
+        async def compare_sessions(session_a_id: str, session_b_id: str):
+            """
+            Compare two loaded sessions (FR-002, User Story 1)
+
+            Args:
+                session_a_id: First session ID
+                session_b_id: Second session ID
+
+            Returns:
+                Comparison results including deltas and correlations
+            """
+            result = self.session_comparator.compare_sessions(session_a_id, session_b_id)
+
+            if result:
+                return {
+                    "ok": True,
+                    "comparison": {
+                        "session_a": result.session_a_id,
+                        "session_b": result.session_b_id,
+                        "deltas": {
+                            "ici": result.delta_mean_ici,
+                            "coherence": result.delta_mean_coherence,
+                            "criticality": result.delta_mean_criticality,
+                            "phi": result.delta_mean_phi
+                        },
+                        "correlations": {
+                            "ici": result.ici_correlation,
+                            "coherence": result.coherence_correlation,
+                            "criticality": result.criticality_correlation,
+                            "phi": result.phi_correlation
+                        },
+                        "statistical_significance": {
+                            "ici_ttest_pvalue": result.ici_ttest_pvalue,
+                            "coherence_ttest_pvalue": result.coherence_ttest_pvalue
+                        }
+                    }
+                }
+            else:
+                return {
+                    "ok": False,
+                    "message": "Failed to compare sessions. Ensure both sessions are loaded."
+                }
+
+        @self.app.get("/api/analytics/correlations")
+        async def get_correlation_matrices(metric: str = "ici"):
+            """
+            Get correlation matrix for a metric across all sessions (FR-004, User Story 3)
+
+            Args:
+                metric: Metric to correlate (ici, coherence, criticality, phi)
+
+            Returns:
+                Correlation matrix with validation flags
+            """
+            corr_matrix = self.correlation_analyzer.compute_correlation_matrix(metric)
+
+            if corr_matrix:
+                return {
+                    "ok": True,
+                    "metric": corr_matrix.metric_name,
+                    "session_ids": corr_matrix.session_ids,
+                    "matrix": corr_matrix.matrix,
+                    "is_symmetric": corr_matrix.is_symmetric,
+                    "diagonal_ones": corr_matrix.diagonal_ones,
+                    "session_count": len(corr_matrix.session_ids)
+                }
+            else:
+                return {
+                    "ok": False,
+                    "message": "Failed to compute correlation matrix. Need at least 2 loaded sessions."
+                }
+
+        @self.app.get("/api/analytics/correlations/all")
+        async def get_all_correlations():
+            """
+            Get correlation matrices for all metrics (FR-004)
+
+            Returns:
+                Correlation matrices for all metric types
+            """
+            all_correlations = self.correlation_analyzer.compute_all_correlations()
+
+            result = {}
+            for metric, corr_matrix in all_correlations.items():
+                result[metric] = {
+                    "session_ids": corr_matrix.session_ids,
+                    "matrix": corr_matrix.matrix,
+                    "is_symmetric": corr_matrix.is_symmetric,
+                    "diagonal_ones": corr_matrix.diagonal_ones
+                }
+
+            return {
+                "ok": True,
+                "correlations": result,
+                "metrics_count": len(result)
+            }
+
+        @self.app.get("/api/analytics/heatmap")
+        async def get_correlation_heatmap(metric: str = "ici"):
+            """
+            Get heatmap visualization data (FR-004, UI support)
+
+            Args:
+                metric: Metric for heatmap (ici, coherence, criticality, phi)
+
+            Returns:
+                Heatmap data with statistics for visualization
+            """
+            heatmap = self.correlation_analyzer.get_heatmap_data(metric)
+
+            if heatmap:
+                return {
+                    "ok": True,
+                    **heatmap
+                }
+            else:
+                return {
+                    "ok": False,
+                    "message": "Failed to generate heatmap data"
+                }
+
+        @self.app.get("/api/analytics/summary")
+        async def get_analytics_summary():
+            """
+            Get summary table for all session pairs (FR-004)
+
+            Returns:
+                Summary statistics for all pairwise comparisons
+            """
+            summary = self.correlation_analyzer.get_summary_table()
+
+            return {
+                "ok": True,
+                "summary": summary,
+                "pair_count": len(summary)
             }
 
         # Metrics WebSocket endpoint
