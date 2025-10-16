@@ -42,6 +42,7 @@ from data_exporter import DataExporter, ExportConfig, ExportRequest, ExportForma
 from node_sync import NodeSynchronizer, NodeSyncConfig, NodeRole
 from phasenet_protocol import PhaseNetNode, PhaseNetConfig
 from cluster_monitor import ClusterMonitor, ClusterMonitorConfig
+from hw_interface import HardwareInterface
 
 
 class SoundlabServer:
@@ -78,7 +79,10 @@ class SoundlabServer:
                  enable_phasenet: bool = False,
                  phasenet_port: int = 9000,
                  phasenet_key: Optional[str] = None,
-                 enable_cluster_monitor: bool = False):
+                 enable_cluster_monitor: bool = False,
+                 enable_hardware_bridge: bool = False,
+                 hardware_port: Optional[str] = None,
+                 hardware_baudrate: int = 115200):
         """
         Initialize Soundlab server
 
@@ -435,6 +439,20 @@ class SoundlabServer:
             self.cluster_monitor.phasenet = self.phasenet
         else:
             self.cluster_monitor = None
+
+        # Initialize Hardware Interface (Feature 023)
+        if enable_hardware_bridge:
+            print("\n[Main] Initializing Hardware I²S Bridge...")
+            self.hw_interface = HardwareInterface(
+                port=hardware_port,
+                baudrate=hardware_baudrate,
+                enable_logging=enable_logging
+            )
+            # Wire to cluster monitor (FR-008)
+            if self.cluster_monitor:
+                self.cluster_monitor.hw_interface = self.hw_interface
+        else:
+            self.hw_interface = None
 
         # Initialize latency streamer (will be created by latency API)
         self.latency_streamer: Optional[LatencyStreamer] = None
@@ -1245,6 +1263,167 @@ class SoundlabServer:
                 **stats
             }
 
+        # Hardware Interface API endpoints (Feature 023)
+        @self.app.get("/api/hardware/devices")
+        async def list_hardware_devices():
+            """List available serial devices (FR-007)"""
+            if not self.hw_interface:
+                return {"ok": False, "message": "Hardware Interface not enabled"}
+
+            devices = self.hw_interface.list_devices()
+            return {
+                "ok": True,
+                "devices": devices,
+                "count": len(devices)
+            }
+
+        @self.app.post("/api/hardware/connect")
+        async def connect_hardware(port: Optional[str] = None):
+            """Connect to hardware device (FR-007)"""
+            if not self.hw_interface:
+                return {"ok": False, "message": "Hardware Interface not enabled"}
+
+            # Update port if provided
+            if port:
+                self.hw_interface.port = port
+
+            success = self.hw_interface.connect()
+            if success:
+                version = self.hw_interface.get_version()
+                return {
+                    "ok": True,
+                    "message": "Connected to hardware",
+                    "port": self.hw_interface.port,
+                    "baudrate": self.hw_interface.baudrate,
+                    "firmware_version": version
+                }
+            else:
+                return {
+                    "ok": False,
+                    "message": "Failed to connect to hardware"
+                }
+
+        @self.app.post("/api/hardware/disconnect")
+        async def disconnect_hardware():
+            """Disconnect from hardware device"""
+            if not self.hw_interface:
+                return {"ok": False, "message": "Hardware Interface not enabled"}
+
+            self.hw_interface.disconnect()
+            return {
+                "ok": True,
+                "message": "Disconnected from hardware"
+            }
+
+        @self.app.post("/api/hardware/start")
+        async def start_hardware():
+            """Start hardware bridge (FR-002)"""
+            if not self.hw_interface:
+                return {"ok": False, "message": "Hardware Interface not enabled"}
+
+            success = self.hw_interface.start()
+            if success:
+                return {
+                    "ok": True,
+                    "message": "Hardware bridge started"
+                }
+            else:
+                return {
+                    "ok": False,
+                    "message": "Failed to start hardware bridge"
+                }
+
+        @self.app.post("/api/hardware/stop")
+        async def stop_hardware():
+            """Stop hardware bridge"""
+            if not self.hw_interface:
+                return {"ok": False, "message": "Hardware Interface not enabled"}
+
+            success = self.hw_interface.stop()
+            if success:
+                return {
+                    "ok": True,
+                    "message": "Hardware bridge stopped"
+                }
+            else:
+                return {
+                    "ok": False,
+                    "message": "Failed to stop hardware bridge"
+                }
+
+        @self.app.get("/api/hardware/status")
+        async def get_hardware_status():
+            """Get hardware link status (FR-008)"""
+            if not self.hw_interface:
+                return {"ok": False, "message": "Hardware Interface not enabled"}
+
+            return {
+                "ok": True,
+                "is_connected": self.hw_interface.is_connected,
+                "is_running": self.hw_interface.is_running,
+                "port": self.hw_interface.port,
+                "baudrate": self.hw_interface.baudrate,
+                "link_status": self.hw_interface.stats.link_status
+            }
+
+        @self.app.get("/api/hardware/stats")
+        async def get_hardware_statistics():
+            """Get hardware statistics (SC-001, SC-002)"""
+            if not self.hw_interface:
+                return {"ok": False, "message": "Hardware Interface not enabled"}
+
+            stats = self.hw_interface.get_statistics()
+            return {
+                "ok": True,
+                **stats
+            }
+
+        @self.app.post("/api/hardware/self-test")
+        async def run_hardware_self_test():
+            """Run hardware self-test (FR-010, SC-001)"""
+            if not self.hw_interface:
+                return {"ok": False, "message": "Hardware Interface not enabled"}
+
+            passed, latency_us, jitter_us = self.hw_interface.self_test()
+            return {
+                "ok": True,
+                "passed": passed,
+                "latency_us": latency_us,
+                "jitter_us": jitter_us,
+                "meets_sc001": latency_us <= 40 and jitter_us <= 5
+            }
+
+        @self.app.post("/api/hardware/calibrate")
+        async def calibrate_hardware_drift():
+            """Calibrate clock drift (FR-005)"""
+            if not self.hw_interface:
+                return {"ok": False, "message": "Hardware Interface not enabled"}
+
+            drift_ppm = self.hw_interface.calibrate_drift()
+            return {
+                "ok": True,
+                "drift_ppm": drift_ppm,
+                "message": f"Clock drift: {drift_ppm:.3f} ppm"
+            }
+
+        @self.app.post("/api/hardware/reset-stats")
+        async def reset_hardware_statistics():
+            """Reset hardware statistics counters"""
+            if not self.hw_interface:
+                return {"ok": False, "message": "Hardware Interface not enabled"}
+
+            success = self.hw_interface.reset_statistics()
+            if success:
+                return {
+                    "ok": True,
+                    "message": "Statistics reset"
+                }
+            else:
+                return {
+                    "ok": False,
+                    "message": "Failed to reset statistics"
+                }
+
         # Metrics WebSocket endpoint
         @self.app.websocket("/ws/metrics")
         async def websocket_metrics(websocket):
@@ -1764,6 +1943,9 @@ def main():
     parser.add_argument("--phasenet-port", type=int, default=9000, help="PhaseNet UDP port (default: 9000)")
     parser.add_argument("--phasenet-key", help="PhaseNet encryption key (enables AES-128 encryption)")
     parser.add_argument("--enable-cluster-monitor", action="store_true", help="Enable Cluster Monitor (centralized node monitoring and management)")
+    parser.add_argument("--enable-hardware-bridge", action="store_true", help="Enable Hardware I²S Bridge (sync with embedded microcontrollers via serial)")
+    parser.add_argument("--hardware-port", help="Serial port for hardware bridge (auto-detect if not specified)")
+    parser.add_argument("--hardware-baudrate", type=int, default=115200, help="Serial baudrate for hardware bridge (default: 115200)")
     parser.add_argument("--list-devices", action="store_true", help="List available audio devices and exit")
 
     args = parser.parse_args()
@@ -1799,7 +1981,10 @@ def main():
         enable_phasenet=args.enable_phasenet,
         phasenet_port=args.phasenet_port,
         phasenet_key=args.phasenet_key,
-        enable_cluster_monitor=args.enable_cluster_monitor
+        enable_cluster_monitor=args.enable_cluster_monitor,
+        enable_hardware_bridge=args.enable_hardware_bridge,
+        hardware_port=args.hardware_port,
+        hardware_baudrate=args.hardware_baudrate
     )
 
     server.run(

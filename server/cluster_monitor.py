@@ -180,6 +180,9 @@ class ClusterMonitor:
         self.node_sync = None
         self.phasenet = None
 
+        # Hardware interface reference (Feature 023, FR-008)
+        self.hw_interface = None
+
         # Load persisted topology (FR-010)
         self._load_topology()
 
@@ -242,6 +245,10 @@ class ClusterMonitor:
                 # Collect from PhaseNet (Feature 021)
                 if self.phasenet and self.phasenet.is_running:
                     self._collect_from_phasenet(current_time)
+
+                # Collect from Hardware Interface (Feature 023, FR-008)
+                if self.hw_interface and self.hw_interface.is_connected:
+                    self._collect_from_hardware(current_time)
 
                 # Broadcast updates via WebSocket (FR-004, SC-001)
                 self._broadcast_updates()
@@ -386,6 +393,38 @@ class ClusterMonitor:
         except Exception as e:
             if self.config.enable_logging:
                 print(f"[ClusterMonitor] Error collecting from PhaseNet: {e}")
+
+    def _collect_from_hardware(self, current_time: float):
+        """Collect metrics from Hardware Interface (Feature 023, FR-008)"""
+        try:
+            stats = self.hw_interface.get_statistics()
+
+            # Create hardware node metrics entry
+            hw_metrics = NodeMetrics(
+                timestamp=current_time,
+                node_id="hardware_bridge",
+                role="hardware",
+                host=self.hw_interface.port or "auto",
+                port=self.hw_interface.baudrate,
+                rtt_ms=stats.get('latency_us', 0) / 1000.0,  # Convert µs to ms
+                drift_ms=stats.get('clock_drift_ppm', 0.0) / 1000.0,  # Approximate conversion
+                phi_phase=0.0,  # Hardware doesn't provide these directly
+                phi_depth=0.0,
+                coherence=1.0 - stats.get('loss_rate', 0.0),  # Convert loss to coherence
+                criticality=1.0,
+                pkt_loss_pct=stats.get('loss_rate', 0.0) * 100,
+                cpu_pct=0.0,  # Not applicable for hardware
+                mem_pct=0.0,
+                uptime_s=stats.get('uptime_ms', 0) / 1000.0,  # Convert ms to s
+                last_seen=current_time
+            )
+
+            # Track as hardware node (not a leader)
+            self._update_node_metrics(hw_metrics, is_leader=False)
+
+        except Exception as e:
+            if self.config.enable_logging:
+                print(f"[ClusterMonitor] Error collecting from Hardware: {e}")
 
     def _update_node_metrics(self, metrics: NodeMetrics, is_leader: bool):
         """
