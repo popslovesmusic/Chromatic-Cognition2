@@ -41,6 +41,7 @@ from timeline_player import TimelinePlayer, TimelinePlayerConfig
 from data_exporter import DataExporter, ExportConfig, ExportRequest, ExportFormat
 from node_sync import NodeSynchronizer, NodeSyncConfig, NodeRole
 from phasenet_protocol import PhaseNetNode, PhaseNetConfig
+from cluster_monitor import ClusterMonitor, ClusterMonitorConfig
 
 
 class SoundlabServer:
@@ -76,7 +77,8 @@ class SoundlabServer:
                  node_sync_master_url: Optional[str] = None,
                  enable_phasenet: bool = False,
                  phasenet_port: int = 9000,
-                 phasenet_key: Optional[str] = None):
+                 phasenet_key: Optional[str] = None,
+                 enable_cluster_monitor: bool = False):
         """
         Initialize Soundlab server
 
@@ -417,6 +419,22 @@ class SoundlabServer:
             self.phasenet = PhaseNetNode(phasenet_config)
         else:
             self.phasenet = None
+
+        # Initialize Cluster Monitor (Feature 022)
+        if enable_cluster_monitor:
+            print("\n[Main] Initializing Cluster Monitor...")
+            cluster_monitor_config = ClusterMonitorConfig(
+                update_interval=1.0,
+                history_samples=600,
+                enable_rbac=True,
+                enable_logging=enable_logging
+            )
+            self.cluster_monitor = ClusterMonitor(cluster_monitor_config)
+            # Wire references to node_sync and phasenet (FR-001, FR-002)
+            self.cluster_monitor.node_sync = self.node_sync
+            self.cluster_monitor.phasenet = self.phasenet
+        else:
+            self.cluster_monitor = None
 
         # Initialize latency streamer (will be created by latency API)
         self.latency_streamer: Optional[LatencyStreamer] = None
@@ -1159,6 +1177,74 @@ class SoundlabServer:
                 "message": "Phase updated"
             }
 
+        # Cluster Monitor API endpoints (Feature 022)
+        @self.app.get("/api/cluster/nodes")
+        async def get_cluster_nodes():
+            """Get list of all nodes in cluster (FR-003, SC-001)"""
+            if not self.cluster_monitor:
+                return {"ok": False, "message": "Cluster Monitor not enabled"}
+
+            nodes = self.cluster_monitor.get_nodes_list()
+            return {
+                "ok": True,
+                "nodes": nodes,
+                "count": len(nodes)
+            }
+
+        @self.app.get("/api/cluster/nodes/{node_id}")
+        async def get_cluster_node_detail(node_id: str):
+            """Get detailed node info with history (FR-003, SC-003)"""
+            if not self.cluster_monitor:
+                return {"ok": False, "message": "Cluster Monitor not enabled"}
+
+            detail = self.cluster_monitor.get_node_detail(node_id)
+            if detail:
+                return {
+                    "ok": True,
+                    **detail
+                }
+            else:
+                return {"ok": False, "message": f"Node {node_id} not found"}
+
+        @self.app.post("/api/cluster/nodes/{node_id}/promote")
+        async def promote_cluster_node(node_id: str, token: Optional[str] = None):
+            """Promote node to master (FR-003, SC-002, SC-005)"""
+            if not self.cluster_monitor:
+                return {"ok": False, "message": "Cluster Monitor not enabled"}
+
+            result = self.cluster_monitor.promote_node(node_id, token)
+            return result
+
+        @self.app.post("/api/cluster/nodes/{node_id}/quarantine")
+        async def quarantine_cluster_node(node_id: str, token: Optional[str] = None):
+            """Quarantine node (FR-003, SC-002, SC-005)"""
+            if not self.cluster_monitor:
+                return {"ok": False, "message": "Cluster Monitor not enabled"}
+
+            result = self.cluster_monitor.quarantine_node(node_id, token)
+            return result
+
+        @self.app.post("/api/cluster/nodes/{node_id}/restart")
+        async def restart_cluster_node(node_id: str, token: Optional[str] = None):
+            """Restart node (FR-003, SC-002, SC-005)"""
+            if not self.cluster_monitor:
+                return {"ok": False, "message": "Cluster Monitor not enabled"}
+
+            result = self.cluster_monitor.restart_node(node_id, token)
+            return result
+
+        @self.app.get("/api/cluster/stats")
+        async def get_cluster_statistics():
+            """Get cluster statistics (FR-001)"""
+            if not self.cluster_monitor:
+                return {"ok": False, "message": "Cluster Monitor not enabled"}
+
+            stats = self.cluster_monitor.get_statistics()
+            return {
+                "ok": True,
+                **stats
+            }
+
         # Metrics WebSocket endpoint
         @self.app.websocket("/ws/metrics")
         async def websocket_metrics(websocket):
@@ -1468,6 +1554,50 @@ class SoundlabServer:
                 except WebSocketDisconnect:
                     print("[Main] Node sync WebSocket disconnected from master")
 
+        # Cluster Monitor WebSocket endpoint (Feature 022)
+        @self.app.websocket("/ws/cluster")
+        async def websocket_cluster(websocket):
+            """WebSocket endpoint for cluster monitoring (FR-004, SC-001)"""
+            from fastapi import WebSocket, WebSocketDisconnect
+            import json
+
+            if not self.cluster_monitor:
+                await websocket.close(code=1000, reason="Cluster Monitor not enabled")
+                return
+
+            await websocket.accept()
+            print("[Main] Cluster monitor WebSocket connected")
+
+            # Add client to cluster monitor's client list
+            with self.cluster_monitor.ws_client_lock:
+                self.cluster_monitor.ws_clients.append(websocket)
+
+            try:
+                # Broadcast loop: send cluster updates at configured interval
+                while True:
+                    # Get current cluster state
+                    update = {
+                        "type": "cluster_update",
+                        "timestamp": time.time(),
+                        "nodes": self.cluster_monitor.get_nodes_list(),
+                        "stats": self.cluster_monitor.get_statistics()
+                    }
+
+                    await websocket.send_json(update)
+
+                    # Wait for next update interval (1-2 Hz)
+                    await asyncio.sleep(self.cluster_monitor.config.update_interval)
+
+            except WebSocketDisconnect:
+                print("[Main] Cluster monitor WebSocket disconnected")
+            except Exception as e:
+                print(f"[Main] Cluster monitor WebSocket error: {e}")
+            finally:
+                # Remove client from cluster monitor's client list
+                with self.cluster_monitor.ws_client_lock:
+                    if websocket in self.cluster_monitor.ws_clients:
+                        self.cluster_monitor.ws_clients.remove(websocket)
+
     def _mount_static_files(self):
         """Mount static file directories"""
         # Mount frontend files if they exist
@@ -1490,6 +1620,13 @@ class SoundlabServer:
         if self.latency_streamer:
             print("[Main] Starting latency streamer...")
             await self.latency_streamer.start()
+
+        # Start cluster monitor (Feature 022)
+        if self.cluster_monitor:
+            print("[Main] Starting cluster monitor...")
+            self.cluster_monitor.start()
+            if self.cluster_monitor.config.enable_rbac:
+                print(f"[Main] Cluster Monitor Admin Token: {self.cluster_monitor.admin_token}")
 
         print("\n[Main] ✓ All services started")
         print("\n" + "=" * 60)
@@ -1550,6 +1687,11 @@ class SoundlabServer:
         if self.latency_streamer:
             print("[Main] Stopping latency streamer...")
             await self.latency_streamer.stop()
+
+        # Stop cluster monitor (Feature 022)
+        if self.cluster_monitor:
+            print("[Main] Stopping cluster monitor...")
+            self.cluster_monitor.stop()
 
         print("\n[Main] ✓ Shutdown complete")
         print("=" * 60)
@@ -1621,6 +1763,7 @@ def main():
     parser.add_argument("--enable-phasenet", action="store_true", help="Enable PhaseNet Protocol (mesh network for distributed sync)")
     parser.add_argument("--phasenet-port", type=int, default=9000, help="PhaseNet UDP port (default: 9000)")
     parser.add_argument("--phasenet-key", help="PhaseNet encryption key (enables AES-128 encryption)")
+    parser.add_argument("--enable-cluster-monitor", action="store_true", help="Enable Cluster Monitor (centralized node monitoring and management)")
     parser.add_argument("--list-devices", action="store_true", help="List available audio devices and exit")
 
     args = parser.parse_args()
@@ -1655,7 +1798,8 @@ def main():
         node_sync_master_url=args.node_sync_master_url,
         enable_phasenet=args.enable_phasenet,
         phasenet_port=args.phasenet_port,
-        phasenet_key=args.phasenet_key
+        phasenet_key=args.phasenet_key,
+        enable_cluster_monitor=args.enable_cluster_monitor
     )
 
     server.run(
