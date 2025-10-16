@@ -183,6 +183,9 @@ class ClusterMonitor:
         # Hardware interface reference (Feature 023, FR-008)
         self.hw_interface = None
 
+        # Hybrid node bridge reference (Feature 024, FR-009)
+        self.hybrid_bridge = None
+
         # Load persisted topology (FR-010)
         self._load_topology()
 
@@ -249,6 +252,10 @@ class ClusterMonitor:
                 # Collect from Hardware Interface (Feature 023, FR-008)
                 if self.hw_interface and self.hw_interface.is_connected:
                     self._collect_from_hardware(current_time)
+
+                # Collect from Hybrid Analog-DSP Node (Feature 024, FR-009)
+                if self.hybrid_bridge and self.hybrid_bridge.is_connected:
+                    self._collect_from_hybrid(current_time)
 
                 # Broadcast updates via WebSocket (FR-004, SC-001)
                 self._broadcast_updates()
@@ -425,6 +432,45 @@ class ClusterMonitor:
         except Exception as e:
             if self.config.enable_logging:
                 print(f"[ClusterMonitor] Error collecting from Hardware: {e}")
+
+    def _collect_from_hybrid(self, current_time: float):
+        """Collect metrics from Hybrid Analog-DSP Node (Feature 024, FR-009)"""
+        try:
+            # Get DSP metrics (ICI, coherence, spectral analysis)
+            dsp = self.hybrid_bridge.get_dsp_metrics()
+
+            # Get safety telemetry
+            safety = self.hybrid_bridge.get_safety()
+
+            # Get node statistics
+            stats = self.hybrid_bridge.get_statistics()
+
+            # Create hybrid node metrics entry
+            hybrid_metrics = NodeMetrics(
+                timestamp=current_time,
+                node_id="hybrid_analog_dsp",
+                role="hybrid",
+                host=self.hybrid_bridge.port or "auto",
+                port=self.hybrid_bridge.baudrate,
+                rtt_ms=stats.get('total_latency_us', 0) / 1000.0,  # Convert µs to ms (SC-001)
+                drift_ms=stats.get('drift_ppm', 0.0) / 1000.0,  # Clock drift from calibration
+                phi_phase=0.0,  # Hybrid node doesn't track Φ-phase directly yet
+                phi_depth=0.0,
+                coherence=dsp.get('coherence', 0.0),  # Phase coherence from DSP analysis
+                criticality=dsp.get('criticality', 1.0),  # Criticality metric
+                pkt_loss_pct=0.0,  # Not applicable for direct serial
+                cpu_pct=stats.get('cpu_load', 0.0),  # CPU load from embedded processor
+                mem_pct=stats.get('buffer_utilization', 0.0),  # DMA buffer utilization
+                uptime_s=stats.get('uptime_ms', 0) / 1000.0,  # Convert ms to s
+                last_seen=current_time
+            )
+
+            # Track as hybrid node (not a leader)
+            self._update_node_metrics(hybrid_metrics, is_leader=False)
+
+        except Exception as e:
+            if self.config.enable_logging:
+                print(f"[ClusterMonitor] Error collecting from Hybrid: {e}")
 
     def _update_node_metrics(self, metrics: NodeMetrics, is_leader: bool):
         """

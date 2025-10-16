@@ -43,6 +43,7 @@ from node_sync import NodeSynchronizer, NodeSyncConfig, NodeRole
 from phasenet_protocol import PhaseNetNode, PhaseNetConfig
 from cluster_monitor import ClusterMonitor, ClusterMonitorConfig
 from hw_interface import HardwareInterface
+from hybrid_bridge import HybridBridge
 
 
 class SoundlabServer:
@@ -82,7 +83,10 @@ class SoundlabServer:
                  enable_cluster_monitor: bool = False,
                  enable_hardware_bridge: bool = False,
                  hardware_port: Optional[str] = None,
-                 hardware_baudrate: int = 115200):
+                 hardware_baudrate: int = 115200,
+                 enable_hybrid_bridge: bool = False,
+                 hybrid_port: Optional[str] = None,
+                 hybrid_baudrate: int = 115200):
         """
         Initialize Soundlab server
 
@@ -453,6 +457,19 @@ class SoundlabServer:
                 self.cluster_monitor.hw_interface = self.hw_interface
         else:
             self.hw_interface = None
+
+        # Initialize Hybrid Analog-DSP Bridge (Feature 024)
+        if enable_hybrid_bridge:
+            print("\n[Main] Initializing Hybrid Analog-DSP Bridge...")
+            self.hybrid_bridge = HybridBridge(
+                port=hybrid_port,
+                baudrate=hybrid_baudrate
+            )
+            # Wire to cluster monitor (FR-009)
+            if self.cluster_monitor:
+                self.cluster_monitor.hybrid_bridge = self.hybrid_bridge
+        else:
+            self.hybrid_bridge = None
 
         # Initialize latency streamer (will be created by latency API)
         self.latency_streamer: Optional[LatencyStreamer] = None
@@ -1424,6 +1441,256 @@ class SoundlabServer:
                     "message": "Failed to reset statistics"
                 }
 
+        # Hybrid Analog-DSP Node API endpoints (Feature 024)
+        @self.app.get("/api/hybrid/devices")
+        async def list_hybrid_devices():
+            """List available serial devices (FR-005)"""
+            if not self.hybrid_bridge:
+                return {"ok": False, "message": "Hybrid Bridge not enabled"}
+
+            devices = self.hybrid_bridge.list_devices()
+            return {
+                "ok": True,
+                "devices": devices,
+                "count": len(devices)
+            }
+
+        @self.app.post("/api/hybrid/connect")
+        async def connect_hybrid(port: Optional[str] = None):
+            """Connect to hybrid node (FR-005)"""
+            if not self.hybrid_bridge:
+                return {"ok": False, "message": "Hybrid Bridge not enabled"}
+
+            # Update port if provided
+            if port:
+                self.hybrid_bridge.port = port
+
+            success = self.hybrid_bridge.connect()
+            if success:
+                version = self.hybrid_bridge.get_version()
+                return {
+                    "ok": True,
+                    "message": "Connected to hybrid node",
+                    "port": self.hybrid_bridge.port,
+                    "baudrate": self.hybrid_bridge.baudrate,
+                    "firmware_version": version
+                }
+            else:
+                return {
+                    "ok": False,
+                    "message": "Failed to connect to hybrid node"
+                }
+
+        @self.app.post("/api/hybrid/disconnect")
+        async def disconnect_hybrid():
+            """Disconnect from hybrid node"""
+            if not self.hybrid_bridge:
+                return {"ok": False, "message": "Hybrid Bridge not enabled"}
+
+            self.hybrid_bridge.disconnect()
+            return {
+                "ok": True,
+                "message": "Disconnected from hybrid node"
+            }
+
+        @self.app.post("/api/hybrid/start")
+        async def start_hybrid():
+            """Start hybrid node processing (FR-001)"""
+            if not self.hybrid_bridge:
+                return {"ok": False, "message": "Hybrid Bridge not enabled"}
+
+            success = self.hybrid_bridge.start()
+            if success:
+                return {
+                    "ok": True,
+                    "message": "Hybrid node started"
+                }
+            else:
+                return {
+                    "ok": False,
+                    "message": "Failed to start hybrid node"
+                }
+
+        @self.app.post("/api/hybrid/stop")
+        async def stop_hybrid():
+            """Stop hybrid node processing"""
+            if not self.hybrid_bridge:
+                return {"ok": False, "message": "Hybrid Bridge not enabled"}
+
+            success = self.hybrid_bridge.stop()
+            if success:
+                return {
+                    "ok": True,
+                    "message": "Hybrid node stopped"
+                }
+            else:
+                return {
+                    "ok": False,
+                    "message": "Failed to stop hybrid node"
+                }
+
+        @self.app.get("/api/hybrid/status")
+        async def get_hybrid_status():
+            """Get hybrid node status (FR-009)"""
+            if not self.hybrid_bridge:
+                return {"ok": False, "message": "Hybrid Bridge not enabled"}
+
+            status = self.hybrid_bridge.get_status()
+            return {
+                "ok": True,
+                "is_connected": self.hybrid_bridge.is_connected,
+                "is_running": self.hybrid_bridge.is_running,
+                "port": self.hybrid_bridge.port,
+                "baudrate": self.hybrid_bridge.baudrate,
+                **status
+            }
+
+        @self.app.get("/api/hybrid/dsp-metrics")
+        async def get_hybrid_dsp_metrics():
+            """Get DSP metrics (ICI, coherence, spectral analysis) (FR-003)"""
+            if not self.hybrid_bridge:
+                return {"ok": False, "message": "Hybrid Bridge not enabled"}
+
+            metrics = self.hybrid_bridge.get_dsp_metrics()
+            if metrics:
+                return {
+                    "ok": True,
+                    **metrics
+                }
+            else:
+                return {
+                    "ok": False,
+                    "message": "Failed to get DSP metrics"
+                }
+
+        @self.app.get("/api/hybrid/safety")
+        async def get_hybrid_safety():
+            """Get safety telemetry (FR-007)"""
+            if not self.hybrid_bridge:
+                return {"ok": False, "message": "Hybrid Bridge not enabled"}
+
+            safety = self.hybrid_bridge.get_safety()
+            if safety:
+                return {
+                    "ok": True,
+                    **safety
+                }
+            else:
+                return {
+                    "ok": False,
+                    "message": "Failed to get safety telemetry"
+                }
+
+        @self.app.get("/api/hybrid/stats")
+        async def get_hybrid_statistics():
+            """Get hybrid node statistics (SC-001, SC-002, SC-003)"""
+            if not self.hybrid_bridge:
+                return {"ok": False, "message": "Hybrid Bridge not enabled"}
+
+            stats = self.hybrid_bridge.get_statistics()
+            return {
+                "ok": True,
+                **stats
+            }
+
+        @self.app.post("/api/hybrid/set-preamp-gain")
+        async def set_hybrid_preamp_gain(gain: float):
+            """Set analog preamp gain (FR-002)"""
+            if not self.hybrid_bridge:
+                return {"ok": False, "message": "Hybrid Bridge not enabled"}
+
+            success = self.hybrid_bridge.set_preamp_gain(gain)
+            if success:
+                return {
+                    "ok": True,
+                    "message": f"Preamp gain set to {gain:.2f}"
+                }
+            else:
+                return {
+                    "ok": False,
+                    "message": "Failed to set preamp gain"
+                }
+
+        @self.app.post("/api/hybrid/set-control-voltage")
+        async def set_hybrid_control_voltage(cv1: float, cv2: float, phi_phase: float = 0.0, phi_depth: float = 0.0):
+            """Set control voltage outputs (FR-004)"""
+            if not self.hybrid_bridge:
+                return {"ok": False, "message": "Hybrid Bridge not enabled"}
+
+            from hybrid_bridge import ControlVoltage
+            cv = ControlVoltage(cv1=cv1, cv2=cv2, phi_phase=phi_phase, phi_depth=phi_depth)
+            success = self.hybrid_bridge.set_control_voltage(cv)
+            if success:
+                return {
+                    "ok": True,
+                    "message": "Control voltage set",
+                    "cv1": cv1,
+                    "cv2": cv2,
+                    "phi_phase": phi_phase,
+                    "phi_depth": phi_depth
+                }
+            else:
+                return {
+                    "ok": False,
+                    "message": "Failed to set control voltage"
+                }
+
+        @self.app.post("/api/hybrid/calibrate")
+        async def calibrate_hybrid():
+            """Run calibration routine (FR-008, SC-001)"""
+            if not self.hybrid_bridge:
+                return {"ok": False, "message": "Hybrid Bridge not enabled"}
+
+            calibration = self.hybrid_bridge.calibrate()
+            if calibration:
+                return {
+                    "ok": True,
+                    "message": "Calibration complete",
+                    **calibration,
+                    "meets_sc001": calibration.get('total_latency_us', 9999) <= 2000
+                }
+            else:
+                return {
+                    "ok": False,
+                    "message": "Calibration failed"
+                }
+
+        @self.app.post("/api/hybrid/emergency-shutdown")
+        async def hybrid_emergency_shutdown(reason: str = "Manual shutdown"):
+            """Emergency shutdown hybrid node (FR-007)"""
+            if not self.hybrid_bridge:
+                return {"ok": False, "message": "Hybrid Bridge not enabled"}
+
+            success = self.hybrid_bridge.emergency_shutdown(reason)
+            if success:
+                return {
+                    "ok": True,
+                    "message": f"Emergency shutdown executed: {reason}"
+                }
+            else:
+                return {
+                    "ok": False,
+                    "message": "Failed to execute emergency shutdown"
+                }
+
+        @self.app.post("/api/hybrid/reset-stats")
+        async def reset_hybrid_statistics():
+            """Reset hybrid node statistics counters"""
+            if not self.hybrid_bridge:
+                return {"ok": False, "message": "Hybrid Bridge not enabled"}
+
+            success = self.hybrid_bridge.reset_statistics()
+            if success:
+                return {
+                    "ok": True,
+                    "message": "Statistics reset"
+                }
+            else:
+                return {
+                    "ok": False,
+                    "message": "Failed to reset statistics"
+                }
+
         # Metrics WebSocket endpoint
         @self.app.websocket("/ws/metrics")
         async def websocket_metrics(websocket):
@@ -1946,6 +2213,9 @@ def main():
     parser.add_argument("--enable-hardware-bridge", action="store_true", help="Enable Hardware I²S Bridge (sync with embedded microcontrollers via serial)")
     parser.add_argument("--hardware-port", help="Serial port for hardware bridge (auto-detect if not specified)")
     parser.add_argument("--hardware-baudrate", type=int, default=115200, help="Serial baudrate for hardware bridge (default: 115200)")
+    parser.add_argument("--enable-hybrid-bridge", action="store_true", help="Enable Hybrid Analog-DSP Bridge (analog signal processing with DSP analysis)")
+    parser.add_argument("--hybrid-port", help="Serial port for hybrid bridge (auto-detect if not specified)")
+    parser.add_argument("--hybrid-baudrate", type=int, default=115200, help="Serial baudrate for hybrid bridge (default: 115200)")
     parser.add_argument("--list-devices", action="store_true", help="List available audio devices and exit")
 
     args = parser.parse_args()
@@ -1984,7 +2254,10 @@ def main():
         enable_cluster_monitor=args.enable_cluster_monitor,
         enable_hardware_bridge=args.enable_hardware_bridge,
         hardware_port=args.hardware_port,
-        hardware_baudrate=args.hardware_baudrate
+        hardware_baudrate=args.hardware_baudrate,
+        enable_hybrid_bridge=args.enable_hybrid_bridge,
+        hybrid_port=args.hybrid_port,
+        hybrid_baudrate=args.hybrid_baudrate
     )
 
     server.run(
