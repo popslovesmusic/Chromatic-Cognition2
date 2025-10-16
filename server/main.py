@@ -34,6 +34,7 @@ from latency_api import create_latency_api, LatencyStreamer
 from auto_phi import AutoPhiLearner, AutoPhiConfig
 from criticality_balancer import CriticalityBalancer, CriticalityBalancerConfig
 from state_memory import StateMemory, StateMemoryConfig
+from state_classifier import StateClassifierGraph, StateClassifierConfig
 
 
 class SoundlabServer:
@@ -58,7 +59,8 @@ class SoundlabServer:
                  enable_cors: bool = True,
                  enable_auto_phi: bool = False,
                  enable_criticality_balancer: bool = False,
-                 enable_state_memory: bool = False):
+                 enable_state_memory: bool = False,
+                 enable_state_classifier: bool = False):
         """
         Initialize Soundlab server
 
@@ -204,6 +206,47 @@ class SoundlabServer:
             self.auto_phi_learner.external_bias = bias
 
         self.state_memory.bias_callback = state_memory_bias_callback
+
+        # Initialize State Classifier (Feature 015)
+        print("\n[Main] Initializing State Classifier...")
+        state_classifier_config = StateClassifierConfig(
+            hysteresis_threshold=0.1,
+            min_state_duration=0.5,
+            enable_logging=enable_logging
+        )
+        self.state_classifier = StateClassifierGraph(state_classifier_config)
+
+        # Wire State Classifier to metrics stream
+        def metrics_callback_with_classifier(frame):
+            # Send to metrics streamer
+            asyncio.run(self.metrics_streamer.enqueue_frame(frame))
+            # Send to auto-phi learner
+            self.auto_phi_learner.process_metrics(frame)
+            # Send to criticality balancer
+            self.criticality_balancer.process_metrics(frame)
+            # Send to state memory
+            if self.state_memory.config.enabled:
+                criticality = getattr(frame, 'criticality', 1.0)
+                coherence = getattr(frame, 'phase_coherence', 0.0)
+                ici = getattr(frame, 'ici', 0.0)
+                phi_depth = self.auto_phi_learner.state.phi_depth
+                phi_phase = self.auto_phi_learner.state.phi_phase
+                self.state_memory.add_frame(criticality, coherence, ici, phi_depth, phi_phase)
+            # Send to state classifier
+            if self.state_classifier:
+                ici = getattr(frame, 'ici', 0.0)
+                coherence = getattr(frame, 'phase_coherence', 0.0)
+                centroid = getattr(frame, 'spectral_centroid', 0.0)
+                self.state_classifier.classify_state(ici, coherence, centroid)
+
+        self.audio_server.metrics_callback = metrics_callback_with_classifier
+
+        # Wire State Classifier state changes to WebSocket broadcast
+        def state_change_callback(event):
+            """Broadcast state changes via WebSocket (FR-005)"""
+            asyncio.run(self.metrics_streamer.broadcast_event(event))
+
+        self.state_classifier.state_change_callback = state_change_callback
 
         # Initialize latency streamer (will be created by latency API)
         self.latency_streamer: Optional[LatencyStreamer] = None
@@ -471,6 +514,36 @@ class SoundlabServer:
         async def export_state_memory_buffer():
             """Export State Memory buffer for analysis"""
             return self.state_memory.export_buffer()
+
+        # State Classifier API endpoints (Feature 015)
+        @self.app.get("/api/state-classifier/status")
+        async def get_state_classifier_status():
+            """Get current consciousness state (FR-002)"""
+            return self.state_classifier.get_current_state()
+
+        @self.app.get("/api/state-classifier/stats")
+        async def get_state_classifier_stats():
+            """Get State Classifier statistics (FR-005)"""
+            return self.state_classifier.get_statistics()
+
+        @self.app.get("/api/state-classifier/transitions")
+        async def get_state_classifier_transitions(n: int = 512):
+            """Get recent transition history (FR-004)"""
+            return {
+                "transitions": self.state_classifier.get_transition_history(n)
+            }
+
+        @self.app.get("/api/state-classifier/matrix")
+        async def get_state_classifier_matrix():
+            """Get transition probability matrix (FR-004)"""
+            matrix = self.state_classifier.get_transition_matrix()
+            return {"matrix": matrix.tolist()}
+
+        @self.app.post("/api/state-classifier/reset")
+        async def reset_state_classifier():
+            """Reset State Classifier state"""
+            self.state_classifier.reset()
+            return {"ok": True, "message": "State classifier reset"}
 
         # Metrics WebSocket endpoint
         @self.app.websocket("/ws/metrics")
@@ -759,6 +832,7 @@ def main():
     parser.add_argument("--enable-auto-phi", action="store_true", help="Enable Auto-Phi Learner (adaptive criticality control)")
     parser.add_argument("--enable-criticality-balancer", action="store_true", help="Enable Criticality Balancer (adaptive coupling and amplitude)")
     parser.add_argument("--enable-state-memory", action="store_true", help="Enable State Memory (temporal memory and prediction)")
+    parser.add_argument("--enable-state-classifier", action="store_true", help="Enable State Classifier (consciousness state classification)")
     parser.add_argument("--list-devices", action="store_true", help="List available audio devices and exit")
 
     args = parser.parse_args()
@@ -782,7 +856,8 @@ def main():
         enable_logging=not args.no_logging,
         enable_auto_phi=args.enable_auto_phi,
         enable_criticality_balancer=args.enable_criticality_balancer,
-        enable_state_memory=args.enable_state_memory
+        enable_state_memory=args.enable_state_memory,
+        enable_state_classifier=args.enable_state_classifier
     )
 
     server.run(
