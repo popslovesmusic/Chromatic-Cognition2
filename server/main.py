@@ -35,6 +35,7 @@ from auto_phi import AutoPhiLearner, AutoPhiConfig
 from criticality_balancer import CriticalityBalancer, CriticalityBalancerConfig
 from state_memory import StateMemory, StateMemoryConfig
 from state_classifier import StateClassifierGraph, StateClassifierConfig
+from predictive_model import PredictiveModel, PredictiveModelConfig
 
 
 class SoundlabServer:
@@ -60,7 +61,8 @@ class SoundlabServer:
                  enable_auto_phi: bool = False,
                  enable_criticality_balancer: bool = False,
                  enable_state_memory: bool = False,
-                 enable_state_classifier: bool = False):
+                 enable_state_classifier: bool = False,
+                 enable_predictive_model: bool = False):
         """
         Initialize Soundlab server
 
@@ -247,6 +249,89 @@ class SoundlabServer:
             asyncio.run(self.metrics_streamer.broadcast_event(event))
 
         self.state_classifier.state_change_callback = state_change_callback
+
+        # Initialize Predictive Model (Feature 016)
+        print("\n[Main] Initializing Predictive Model...")
+        predictive_model_config = PredictiveModelConfig(
+            buffer_size=128,
+            prediction_horizon=1.5,
+            min_buffer_size=50,
+            enable_logging=enable_logging
+        )
+        self.predictive_model = PredictiveModel(predictive_model_config) if enable_predictive_model else None
+
+        # Wire Predictive Model to State Memory and State Classifier
+        if self.predictive_model:
+            # Update metrics callback to feed Predictive Model
+            def metrics_callback_with_predictor(frame):
+                # Send to metrics streamer
+                asyncio.run(self.metrics_streamer.enqueue_frame(frame))
+                # Send to auto-phi learner
+                self.auto_phi_learner.process_metrics(frame)
+                # Send to criticality balancer
+                self.criticality_balancer.process_metrics(frame)
+                # Send to state memory
+                if self.state_memory.config.enabled:
+                    criticality = getattr(frame, 'criticality', 1.0)
+                    coherence = getattr(frame, 'phase_coherence', 0.0)
+                    ici = getattr(frame, 'ici', 0.0)
+                    phi_depth = self.auto_phi_learner.state.phi_depth
+                    phi_phase = self.auto_phi_learner.state.phi_phase
+                    self.state_memory.add_frame(criticality, coherence, ici, phi_depth, phi_phase)
+                # Send to state classifier
+                if self.state_classifier:
+                    ici = getattr(frame, 'ici', 0.0)
+                    coherence = getattr(frame, 'phase_coherence', 0.0)
+                    centroid = getattr(frame, 'spectral_centroid', 0.0)
+                    self.state_classifier.classify_state(ici, coherence, centroid)
+                # Send to predictive model (FR-002)
+                if self.predictive_model:
+                    ici = getattr(frame, 'ici', 0.0)
+                    coherence = getattr(frame, 'phase_coherence', 0.0)
+                    criticality = getattr(frame, 'criticality', 1.0)
+                    current_state = self.state_classifier.current_state.value if self.state_classifier else "AWAKE"
+                    import time
+                    self.predictive_model.add_frame(ici, coherence, criticality, current_state, time.time())
+
+            self.audio_server.metrics_callback = metrics_callback_with_predictor
+
+            # Wire forecast callback to Auto-Phi and Criticality Balancer (FR-006)
+            def forecast_callback(forecast_json):
+                """Handle forecast for preemptive adjustments"""
+                # Broadcast forecast via WebSocket
+                asyncio.run(self.metrics_streamer.broadcast_event(forecast_json))
+
+                # Preemptive adjustment based on predicted criticality (SC-003)
+                predicted_criticality = forecast_json['predicted_metrics']['criticality']
+                confidence = forecast_json['confidence']
+
+                # Only act on high-confidence predictions
+                if confidence > 0.7:
+                    # If predicted criticality > 1.05, reduce phi_depth proactively
+                    if predicted_criticality > 1.05:
+                        # Calculate preemptive bias (similar to State Memory)
+                        overshoot_expected = predicted_criticality - 1.0
+                        preemptive_bias = -0.3 * overshoot_expected * confidence
+
+                        # Apply via Auto-Phi Learner external bias
+                        self.auto_phi_learner.external_bias = preemptive_bias
+
+                        if self.enable_logging:
+                            print(f"[PredictiveModel] Preemptive adjustment: bias={preemptive_bias:.3f}, "
+                                  f"predicted_crit={predicted_criticality:.2f}, conf={confidence:.2f}")
+
+                    # If predicted criticality < 0.95, increase phi_depth proactively
+                    elif predicted_criticality < 0.95:
+                        undershoot_expected = 1.0 - predicted_criticality
+                        preemptive_bias = 0.3 * undershoot_expected * confidence
+
+                        self.auto_phi_learner.external_bias = preemptive_bias
+
+                        if self.enable_logging:
+                            print(f"[PredictiveModel] Preemptive adjustment: bias={preemptive_bias:.3f}, "
+                                  f"predicted_crit={predicted_criticality:.2f}, conf={confidence:.2f}")
+
+            self.predictive_model.forecast_callback = forecast_callback
 
         # Initialize latency streamer (will be created by latency API)
         self.latency_streamer: Optional[LatencyStreamer] = None
@@ -545,6 +630,36 @@ class SoundlabServer:
             self.state_classifier.reset()
             return {"ok": True, "message": "State classifier reset"}
 
+        # Predictive Model API endpoints (Feature 016)
+        @self.app.get("/api/predictive-model/forecast")
+        async def get_predictive_model_forecast():
+            """Get latest forecast (FR-005)"""
+            if not self.predictive_model:
+                return {"ok": False, "message": "Predictive Model not enabled"}
+
+            forecast = self.predictive_model.get_last_forecast()
+            if forecast:
+                return forecast
+            else:
+                return {"ok": False, "message": "No forecast available yet"}
+
+        @self.app.get("/api/predictive-model/stats")
+        async def get_predictive_model_stats():
+            """Get prediction statistics (FR-007, SC-001, SC-002, SC-004)"""
+            if not self.predictive_model:
+                return {"ok": False, "message": "Predictive Model not enabled"}
+
+            return self.predictive_model.get_statistics()
+
+        @self.app.post("/api/predictive-model/reset")
+        async def reset_predictive_model():
+            """Reset Predictive Model state"""
+            if not self.predictive_model:
+                return {"ok": False, "message": "Predictive Model not enabled"}
+
+            self.predictive_model.reset()
+            return {"ok": True, "message": "Predictive model reset"}
+
         # Metrics WebSocket endpoint
         @self.app.websocket("/ws/metrics")
         async def websocket_metrics(websocket):
@@ -833,6 +948,7 @@ def main():
     parser.add_argument("--enable-criticality-balancer", action="store_true", help="Enable Criticality Balancer (adaptive coupling and amplitude)")
     parser.add_argument("--enable-state-memory", action="store_true", help="Enable State Memory (temporal memory and prediction)")
     parser.add_argument("--enable-state-classifier", action="store_true", help="Enable State Classifier (consciousness state classification)")
+    parser.add_argument("--enable-predictive-model", action="store_true", help="Enable Predictive Model (next-state forecasting)")
     parser.add_argument("--list-devices", action="store_true", help="List available audio devices and exit")
 
     args = parser.parse_args()
@@ -857,7 +973,8 @@ def main():
         enable_auto_phi=args.enable_auto_phi,
         enable_criticality_balancer=args.enable_criticality_balancer,
         enable_state_memory=args.enable_state_memory,
-        enable_state_classifier=args.enable_state_classifier
+        enable_state_classifier=args.enable_state_classifier,
+        enable_predictive_model=args.enable_predictive_model
     )
 
     server.run(
