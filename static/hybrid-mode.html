@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hybrid Mode - Soundlab</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #fff;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+        }
+
+        h2 {
+            margin-bottom: 20px;
+            font-size: 1.5em;
+        }
+
+        .control-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 34px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: #4CAF50;
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+
+        select, button {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            background: rgba(255, 255, 255, 0.2);
+            color: #fff;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        select option {
+            background: #764ba2;
+            color: #fff;
+        }
+
+        button {
+            background: rgba(76, 175, 80, 0.6);
+            font-weight: 600;
+            margin-top: 10px;
+        }
+
+        button:hover {
+            background: rgba(76, 175, 80, 0.8);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+
+        button:disabled {
+            background: rgba(128, 128, 128, 0.4);
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .slider-container {
+            margin-top: 10px;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 8px;
+            border-radius: 5px;
+            background: rgba(255, 255, 255, 0.3);
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #4CAF50;
+            cursor: pointer;
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #4CAF50;
+            cursor: pointer;
+            border: none;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .metric {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .metric-value {
+            font-size: 2em;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+
+        .metric-label {
+            font-size: 0.9em;
+            opacity: 0.8;
+        }
+
+        .status {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: 600;
+        }
+
+        .status.running {
+            background: rgba(76, 175, 80, 0.6);
+        }
+
+        .status.stopped {
+            background: rgba(244, 67, 54, 0.6);
+        }
+
+        .value-display {
+            font-size: 0.9em;
+            margin-top: 5px;
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Hybrid Mode - Analog-Digital Bridge</h1>
+
+        <!-- Control Panel -->
+        <div class="card">
+            <h2>Control Panel</h2>
+
+            <div class="control-group">
+                <label>
+                    Hybrid Mode
+                    <span class="status" id="status">STOPPED</span>
+                </label>
+                <label class="toggle-switch">
+                    <input type="checkbox" id="hybridToggle">
+                    <span class="slider"></span>
+                </label>
+            </div>
+
+            <div class="control-group">
+                <label for="phiSource">Φ Modulation Source (FR-004)</label>
+                <select id="phiSource">
+                    <option value="internal">Internal (Auto-Generated)</option>
+                    <option value="manual">Manual (Slider Control)</option>
+                    <option value="microphone">Microphone (Envelope Following)</option>
+                    <option value="sensor">Sensor (Future)</option>
+                </select>
+            </div>
+
+            <div class="control-group" id="manualControls" style="display: none;">
+                <label>Φ Phase: <span id="phaseValue" class="value-display">0.00</span></label>
+                <input type="range" id="phiPhase" min="0" max="6.28" step="0.01" value="0">
+
+                <div style="margin-top: 15px;">
+                    <label>Φ Depth: <span id="depthValue" class="value-display">0.50</span></label>
+                    <input type="range" id="phiDepth" min="0" max="1" step="0.01" value="0.5">
+                </div>
+            </div>
+        </div>
+
+        <!-- Real-Time Metrics (SC-003: ≥30 Hz Updates) -->
+        <div class="card">
+            <h2>Real-Time Metrics (30 Hz)</h2>
+            <div class="metrics-grid">
+                <div class="metric">
+                    <div class="metric-label">ICI</div>
+                    <div class="metric-value" id="ici">--</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Phase Coherence</div>
+                    <div class="metric-value" id="coherence">--</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Spectral Centroid (Hz)</div>
+                    <div class="metric-value" id="centroid">--</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Consciousness Level</div>
+                    <div class="metric-value" id="consciousness">--</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">CPU Load (%)</div>
+                    <div class="metric-value" id="cpuLoad">--</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Latency (ms)</div>
+                    <div class="metric-value" id="latency">--</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Statistics (SC-004) -->
+        <div class="card">
+            <h2>Performance Statistics</h2>
+            <div class="metrics-grid">
+                <div class="metric">
+                    <div class="metric-label">Avg Latency (ms)</div>
+                    <div class="metric-value" id="avgLatency">--</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Max Latency (ms)</div>
+                    <div class="metric-value" id="maxLatency">--</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Dropouts</div>
+                    <div class="metric-value" id="dropouts">0</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Frames Processed</div>
+                    <div class="metric-value" id="frames">0</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // WebSocket connection for /ws/hybrid (FR-004)
+        let ws = null;
+        let metricsCount = 0;
+        let lastMetricsTime = 0;
+
+        const elements = {
+            hybridToggle: document.getElementById('hybridToggle'),
+            status: document.getElementById('status'),
+            phiSource: document.getElementById('phiSource'),
+            manualControls: document.getElementById('manualControls'),
+            phiPhase: document.getElementById('phiPhase'),
+            phiDepth: document.getElementById('phiDepth'),
+            phaseValue: document.getElementById('phaseValue'),
+            depthValue: document.getElementById('depthValue')
+        };
+
+        // Toggle hybrid mode (FR-003, SC-001)
+        elements.hybridToggle.addEventListener('change', async (e) => {
+            const enabled = e.target.checked;
+
+            try {
+                const endpoint = enabled ? '/api/hybrid-node/start' : '/api/hybrid-node/stop';
+                const response = await fetch(endpoint, { method: 'POST' });
+                const data = await response.json();
+
+                if (data.ok) {
+                    elements.status.textContent = enabled ? 'RUNNING' : 'STOPPED';
+                    elements.status.className = `status ${enabled ? 'running' : 'stopped'}`;
+
+                    if (enabled) {
+                        connectWebSocket();
+                    } else {
+                        if (ws) {
+                            ws.close();
+                            ws = null;
+                        }
+                    }
+                } else {
+                    console.error('Failed to toggle hybrid mode:', data.message);
+                    elements.hybridToggle.checked = !enabled;
+                }
+            } catch (error) {
+                console.error('Error toggling hybrid mode:', error);
+                elements.hybridToggle.checked = !enabled;
+            }
+        });
+
+        // Change Φ source (User Story 2)
+        elements.phiSource.addEventListener('change', (e) => {
+            const source = e.target.value;
+
+            // Show/hide manual controls
+            elements.manualControls.style.display = (source === 'manual') ? 'block' : 'none';
+
+            // Send via WebSocket (SC-002: <2ms latency)
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'set_phi_source',
+                    source: source
+                }));
+            }
+        });
+
+        // Manual Φ controls
+        elements.phiPhase.addEventListener('input', (e) => {
+            const phase = parseFloat(e.target.value);
+            elements.phaseValue.textContent = phase.toFixed(2);
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'set_phi_manual',
+                    phase: phase,
+                    depth: parseFloat(elements.phiDepth.value)
+                }));
+            }
+        });
+
+        elements.phiDepth.addEventListener('input', (e) => {
+            const depth = parseFloat(e.target.value);
+            elements.depthValue.textContent = depth.toFixed(2);
+
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'set_phi_manual',
+                    phase: parseFloat(elements.phiPhase.value),
+                    depth: depth
+                }));
+            }
+        });
+
+        // Connect to WebSocket (FR-004, FR-007)
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/hybrid`;
+
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+                metricsCount = 0;
+                lastMetricsTime = Date.now();
+            };
+
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+
+                if (data.type === 'hybrid_metrics') {
+                    // Update metrics (SC-003: ≥30 Hz)
+                    updateMetrics(data);
+
+                    // Track metrics rate
+                    metricsCount++;
+                    const now = Date.now();
+                    if (now - lastMetricsTime >= 1000) {
+                        const fps = metricsCount / ((now - lastMetricsTime) / 1000);
+                        console.log(`Metrics rate: ${fps.toFixed(1)} Hz (Target: ≥30 Hz)`);
+                        metricsCount = 0;
+                        lastMetricsTime = now;
+                    }
+                }
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket closed');
+            };
+        }
+
+        // Update metrics display
+        function updateMetrics(data) {
+            document.getElementById('ici').textContent = data.ici.toFixed(4);
+            document.getElementById('coherence').textContent = data.phase_coherence.toFixed(4);
+            document.getElementById('centroid').textContent = data.spectral_centroid.toFixed(1);
+            document.getElementById('consciousness').textContent = data.consciousness_level.toFixed(4);
+            document.getElementById('cpuLoad').textContent = (data.cpu_load * 100).toFixed(1);
+            document.getElementById('latency').textContent = data.latency_ms.toFixed(2);
+            document.getElementById('dropouts').textContent = data.dropouts;
+        }
+
+        // Fetch statistics periodically
+        setInterval(async () => {
+            try {
+                const response = await fetch('/api/hybrid-node/stats');
+                const data = await response.json();
+
+                if (data.ok) {
+                    document.getElementById('avgLatency').textContent = data.avg_latency_ms.toFixed(2);
+                    document.getElementById('maxLatency').textContent = data.max_latency_ms.toFixed(2);
+                    document.getElementById('frames').textContent = data.frame_count;
+                }
+            } catch (error) {
+                // Silently fail if not running
+            }
+        }, 1000);
+
+        // Check initial status
+        (async () => {
+            try {
+                const response = await fetch('/api/hybrid-node/status');
+                const data = await response.json();
+
+                if (data.ok && data.is_running) {
+                    elements.hybridToggle.checked = true;
+                    elements.status.textContent = 'RUNNING';
+                    elements.status.className = 'status running';
+                    connectWebSocket();
+                }
+            } catch (error) {
+                console.error('Error checking initial status:', error);
+            }
+        })();
+    </script>
+</body>
+</html>

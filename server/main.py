@@ -44,6 +44,7 @@ from phasenet_protocol import PhaseNetNode, PhaseNetConfig
 from cluster_monitor import ClusterMonitor, ClusterMonitorConfig
 from hw_interface import HardwareInterface
 from hybrid_bridge import HybridBridge
+from hybrid_node import HybridNode, HybridNodeConfig, PhiSource, HybridMetrics
 
 
 class SoundlabServer:
@@ -86,7 +87,10 @@ class SoundlabServer:
                  hardware_baudrate: int = 115200,
                  enable_hybrid_bridge: bool = False,
                  hybrid_port: Optional[str] = None,
-                 hybrid_baudrate: int = 115200):
+                 hybrid_baudrate: int = 115200,
+                 enable_hybrid_node: bool = False,
+                 hybrid_node_input_device: Optional[int] = None,
+                 hybrid_node_output_device: Optional[int] = None):
         """
         Initialize Soundlab server
 
@@ -470,6 +474,37 @@ class SoundlabServer:
                 self.cluster_monitor.hybrid_bridge = self.hybrid_bridge
         else:
             self.hybrid_bridge = None
+
+        # Initialize Hybrid Node Integration (Feature 025)
+        if enable_hybrid_node:
+            print("\n[Main] Initializing Hybrid Node (Analog-Digital Bridge)...")
+            hybrid_config = HybridNodeConfig(
+                input_device=hybrid_node_input_device,
+                output_device=hybrid_node_output_device,
+                phi_source=PhiSource.INTERNAL,
+                enable_logging=enable_logging
+            )
+            self.hybrid_node = HybridNode(hybrid_config)
+
+            # Register metrics callback to stream to metrics_streamer
+            def hybrid_metrics_callback(metrics: HybridMetrics):
+                # Convert HybridMetrics to metrics frame format for streaming
+                asyncio.run(self.metrics_streamer.broadcast_event({
+                    'type': 'hybrid_metrics',
+                    'timestamp': metrics.timestamp,
+                    'ici': metrics.ici,
+                    'phase_coherence': metrics.phase_coherence,
+                    'spectral_centroid': metrics.spectral_centroid,
+                    'consciousness_level': metrics.consciousness_level,
+                    'phi_phase': metrics.phi_phase,
+                    'phi_depth': metrics.phi_depth,
+                    'cpu_load': metrics.cpu_load,
+                    'latency_ms': metrics.latency_ms
+                }))
+
+            self.hybrid_node.register_metrics_callback(hybrid_metrics_callback)
+        else:
+            self.hybrid_node = None
 
         # Initialize latency streamer (will be created by latency API)
         self.latency_streamer: Optional[LatencyStreamer] = None
@@ -1691,6 +1726,149 @@ class SoundlabServer:
                     "message": "Failed to reset statistics"
                 }
 
+        # Hybrid Node Integration API endpoints (Feature 025)
+        @self.app.get("/api/hybrid-node/devices")
+        async def list_hybrid_node_audio_devices():
+            """List available audio devices for hybrid node (FR-005)"""
+            if not self.hybrid_node:
+                return {"ok": False, "message": "Hybrid Node not enabled"}
+
+            devices = HybridNode.list_audio_devices()
+            return {
+                "ok": True,
+                "devices": devices,
+                "count": len(devices)
+            }
+
+        @self.app.post("/api/hybrid-node/start")
+        async def start_hybrid_node():
+            """Start hybrid mode processing (FR-003, SC-001)"""
+            if not self.hybrid_node:
+                return {"ok": False, "message": "Hybrid Node not enabled"}
+
+            success = self.hybrid_node.start()
+            if success:
+                return {
+                    "ok": True,
+                    "message": "Hybrid mode started"
+                }
+            else:
+                return {
+                    "ok": False,
+                    "message": "Failed to start hybrid mode"
+                }
+
+        @self.app.post("/api/hybrid-node/stop")
+        async def stop_hybrid_node():
+            """Stop hybrid mode processing"""
+            if not self.hybrid_node:
+                return {"ok": False, "message": "Hybrid Node not enabled"}
+
+            success = self.hybrid_node.stop()
+            if success:
+                return {
+                    "ok": True,
+                    "message": "Hybrid mode stopped"
+                }
+            else:
+                return {
+                    "ok": False,
+                    "message": "Failed to stop hybrid mode"
+                }
+
+        @self.app.get("/api/hybrid-node/status")
+        async def get_hybrid_node_status():
+            """Get hybrid node status (FR-007)"""
+            if not self.hybrid_node:
+                return {"ok": False, "message": "Hybrid Node not enabled"}
+
+            metrics = self.hybrid_node.get_current_metrics()
+            stats = self.hybrid_node.get_statistics()
+
+            if metrics:
+                return {
+                    "ok": True,
+                    "is_running": self.hybrid_node.is_running,
+                    "metrics": {
+                        "timestamp": metrics.timestamp,
+                        "ici": metrics.ici,
+                        "phase_coherence": metrics.phase_coherence,
+                        "spectral_centroid": metrics.spectral_centroid,
+                        "consciousness_level": metrics.consciousness_level,
+                        "phi_phase": metrics.phi_phase,
+                        "phi_depth": metrics.phi_depth,
+                        "cpu_load": metrics.cpu_load,
+                        "latency_ms": metrics.latency_ms,
+                        "dropouts": metrics.dropouts
+                    },
+                    "statistics": stats
+                }
+            else:
+                return {
+                    "ok": True,
+                    "is_running": self.hybrid_node.is_running,
+                    "metrics": None,
+                    "statistics": stats
+                }
+
+        @self.app.post("/api/hybrid-node/phi-source")
+        async def set_hybrid_node_phi_source(source: str):
+            """Set Φ modulation source (FR-004, User Story 2)"""
+            if not self.hybrid_node:
+                return {"ok": False, "message": "Hybrid Node not enabled"}
+
+            try:
+                phi_source = PhiSource(source)
+                self.hybrid_node.set_phi_source(phi_source)
+                return {
+                    "ok": True,
+                    "message": f"Φ source set to {source}",
+                    "source": source
+                }
+            except ValueError:
+                return {
+                    "ok": False,
+                    "message": f"Invalid Φ source: {source}. Valid: manual, microphone, sensor, internal"
+                }
+
+        @self.app.post("/api/hybrid-node/phi-manual")
+        async def set_hybrid_node_phi_manual(phase: float, depth: float):
+            """Set manual Φ values (FR-004, User Story 2)"""
+            if not self.hybrid_node:
+                return {"ok": False, "message": "Hybrid Node not enabled"}
+
+            self.hybrid_node.set_phi_manual(phase, depth)
+            return {
+                "ok": True,
+                "message": "Manual Φ values set",
+                "phase": phase,
+                "depth": depth
+            }
+
+        @self.app.get("/api/hybrid-node/stats")
+        async def get_hybrid_node_statistics():
+            """Get hybrid node performance statistics (SC-004)"""
+            if not self.hybrid_node:
+                return {"ok": False, "message": "Hybrid Node not enabled"}
+
+            stats = self.hybrid_node.get_statistics()
+            return {
+                "ok": True,
+                **stats
+            }
+
+        @self.app.post("/api/hybrid-node/reset-stats")
+        async def reset_hybrid_node_statistics():
+            """Reset hybrid node statistics"""
+            if not self.hybrid_node:
+                return {"ok": False, "message": "Hybrid Node not enabled"}
+
+            self.hybrid_node.reset_statistics()
+            return {
+                "ok": True,
+                "message": "Statistics reset"
+            }
+
         # Metrics WebSocket endpoint
         @self.app.websocket("/ws/metrics")
         async def websocket_metrics(websocket):
@@ -2044,6 +2222,120 @@ class SoundlabServer:
                     if websocket in self.cluster_monitor.ws_clients:
                         self.cluster_monitor.ws_clients.remove(websocket)
 
+        # Hybrid Node WebSocket endpoint (Feature 025)
+        @self.app.websocket("/ws/hybrid")
+        async def websocket_hybrid(websocket):
+            """WebSocket endpoint for hybrid node Φ and gain control (FR-004)"""
+            from fastapi import WebSocket, WebSocketDisconnect
+            import json
+
+            if not self.hybrid_node:
+                await websocket.close(code=1000, reason="Hybrid Node not enabled")
+                return
+
+            await websocket.accept()
+            print("[Main] Hybrid node WebSocket connected")
+
+            # Track metrics streaming
+            hybrid_metrics_queue = asyncio.Queue(maxsize=100)
+
+            # Register callback for this client
+            def metrics_callback(metrics: HybridMetrics):
+                try:
+                    hybrid_metrics_queue.put_nowait({
+                        "type": "hybrid_metrics",
+                        "timestamp": metrics.timestamp,
+                        "ici": metrics.ici,
+                        "phase_coherence": metrics.phase_coherence,
+                        "spectral_centroid": metrics.spectral_centroid,
+                        "consciousness_level": metrics.consciousness_level,
+                        "phi_phase": metrics.phi_phase,
+                        "phi_depth": metrics.phi_depth,
+                        "cpu_load": metrics.cpu_load,
+                        "latency_ms": metrics.latency_ms,
+                        "dropouts": metrics.dropouts
+                    })
+                except asyncio.QueueFull:
+                    pass  # Drop if queue full
+
+            self.hybrid_node.register_metrics_callback(metrics_callback)
+
+            try:
+                # Bidirectional communication loop
+                while True:
+                    # Create tasks for both sending and receiving
+                    receive_task = asyncio.create_task(websocket.receive_json())
+                    send_task = asyncio.create_task(hybrid_metrics_queue.get())
+
+                    # Wait for either task to complete
+                    done, pending = await asyncio.wait(
+                        {receive_task, send_task},
+                        return_when=asyncio.FIRST_COMPLETED
+                    )
+
+                    # Cancel pending tasks
+                    for task in pending:
+                        task.cancel()
+
+                    # Handle received message (Φ control commands)
+                    if receive_task in done:
+                        try:
+                            data = receive_task.result()
+                            msg_type = data.get("type")
+
+                            if msg_type == "set_phi_source":
+                                # Change Φ source
+                                source = data.get("source")
+                                try:
+                                    phi_source = PhiSource(source)
+                                    self.hybrid_node.set_phi_source(phi_source)
+                                    await websocket.send_json({
+                                        "type": "phi_source_changed",
+                                        "source": source,
+                                        "ok": True
+                                    })
+                                except ValueError:
+                                    await websocket.send_json({
+                                        "type": "error",
+                                        "message": f"Invalid Φ source: {source}",
+                                        "ok": False
+                                    })
+
+                            elif msg_type == "set_phi_manual":
+                                # Set manual Φ values (SC-002: latency < 2ms)
+                                phase = data.get("phase", 0.0)
+                                depth = data.get("depth", 0.5)
+                                self.hybrid_node.set_phi_manual(phase, depth)
+                                await websocket.send_json({
+                                    "type": "phi_manual_updated",
+                                    "phase": phase,
+                                    "depth": depth,
+                                    "ok": True
+                                })
+
+                            elif msg_type == "ping":
+                                # Ping response
+                                await websocket.send_json({"type": "pong"})
+
+                        except Exception as e:
+                            print(f"[Main] Hybrid WebSocket receive error: {e}")
+
+                    # Handle metrics to send
+                    if send_task in done:
+                        try:
+                            metrics_data = send_task.result()
+                            await websocket.send_json(metrics_data)
+                        except Exception as e:
+                            print(f"[Main] Hybrid WebSocket send error: {e}")
+
+            except WebSocketDisconnect:
+                print("[Main] Hybrid node WebSocket disconnected")
+            except Exception as e:
+                print(f"[Main] Hybrid node WebSocket error: {e}")
+            finally:
+                # Unregister callback
+                self.hybrid_node.unregister_metrics_callback(metrics_callback)
+
     def _mount_static_files(self):
         """Mount static file directories"""
         # Mount frontend files if they exist
@@ -2216,6 +2508,9 @@ def main():
     parser.add_argument("--enable-hybrid-bridge", action="store_true", help="Enable Hybrid Analog-DSP Bridge (analog signal processing with DSP analysis)")
     parser.add_argument("--hybrid-port", help="Serial port for hybrid bridge (auto-detect if not specified)")
     parser.add_argument("--hybrid-baudrate", type=int, default=115200, help="Serial baudrate for hybrid bridge (default: 115200)")
+    parser.add_argument("--enable-hybrid-node", action="store_true", help="Enable Hybrid Node Integration (Feature 025: analog I/O with D-ASE engine)")
+    parser.add_argument("--hybrid-node-input-device", type=int, help="Audio input device index for hybrid node (auto-detect if not specified)")
+    parser.add_argument("--hybrid-node-output-device", type=int, help="Audio output device index for hybrid node (auto-detect if not specified)")
     parser.add_argument("--list-devices", action="store_true", help="List available audio devices and exit")
 
     args = parser.parse_args()
@@ -2257,7 +2552,10 @@ def main():
         hardware_baudrate=args.hardware_baudrate,
         enable_hybrid_bridge=args.enable_hybrid_bridge,
         hybrid_port=args.hybrid_port,
-        hybrid_baudrate=args.hybrid_baudrate
+        hybrid_baudrate=args.hybrid_baudrate,
+        enable_hybrid_node=args.enable_hybrid_node,
+        hybrid_node_input_device=args.hybrid_node_input_device,
+        hybrid_node_output_device=args.hybrid_node_output_device
     )
 
     server.run(
