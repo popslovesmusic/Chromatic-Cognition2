@@ -37,6 +37,7 @@ from state_memory import StateMemory, StateMemoryConfig
 from state_classifier import StateClassifierGraph, StateClassifierConfig
 from predictive_model import PredictiveModel, PredictiveModelConfig
 from session_recorder import SessionRecorder, SessionRecorderConfig
+from timeline_player import TimelinePlayer, TimelinePlayerConfig
 
 
 class SoundlabServer:
@@ -64,7 +65,8 @@ class SoundlabServer:
                  enable_state_memory: bool = False,
                  enable_state_classifier: bool = False,
                  enable_predictive_model: bool = False,
-                 enable_session_recorder: bool = True):
+                 enable_session_recorder: bool = True,
+                 enable_timeline_player: bool = True):
         """
         Initialize Soundlab server
 
@@ -346,6 +348,17 @@ class SoundlabServer:
             self.session_recorder = SessionRecorder(session_recorder_config)
         else:
             self.session_recorder = None
+
+        # Initialize Timeline Player (Feature 018)
+        if enable_timeline_player:
+            print("\n[Main] Initializing Timeline Player...")
+            timeline_player_config = TimelinePlayerConfig(
+                update_rate=30,
+                enable_logging=enable_logging
+            )
+            self.timeline_player = TimelinePlayer(timeline_player_config)
+        else:
+            self.timeline_player = None
 
         # Initialize latency streamer (will be created by latency API)
         self.latency_streamer: Optional[LatencyStreamer] = None
@@ -750,6 +763,120 @@ class SoundlabServer:
                 **estimate
             }
 
+        # Timeline Player API endpoints (Feature 018)
+        @self.app.post("/api/playback/load")
+        async def load_session_for_playback(session_path: str):
+            """Load recorded session for playback (FR-002)"""
+            if not self.timeline_player:
+                return {"ok": False, "message": "Timeline Player not enabled"}
+
+            success = self.timeline_player.load_session(session_path)
+            if success:
+                status = self.timeline_player.get_status()
+                return {
+                    "ok": True,
+                    "message": "Session loaded",
+                    "duration": status.get('total_duration', 0),
+                    "session_path": session_path
+                }
+            else:
+                return {
+                    "ok": False,
+                    "message": self.timeline_player.last_error or "Failed to load session"
+                }
+
+        @self.app.post("/api/playback/play")
+        async def start_playback():
+            """Start playback (FR-003, SC-001)"""
+            if not self.timeline_player:
+                return {"ok": False, "message": "Timeline Player not enabled"}
+
+            success = self.timeline_player.play()
+            if success:
+                return {"ok": True, "message": "Playback started"}
+            else:
+                return {"ok": False, "message": "Failed to start playback"}
+
+        @self.app.post("/api/playback/pause")
+        async def pause_playback():
+            """Pause playback (FR-003, SC-001)"""
+            if not self.timeline_player:
+                return {"ok": False, "message": "Timeline Player not enabled"}
+
+            success = self.timeline_player.pause()
+            if success:
+                return {"ok": True, "message": "Playback paused"}
+            else:
+                return {"ok": False, "message": "Failed to pause playback"}
+
+        @self.app.post("/api/playback/stop")
+        async def stop_playback():
+            """Stop playback (FR-003, SC-001)"""
+            if not self.timeline_player:
+                return {"ok": False, "message": "Timeline Player not enabled"}
+
+            success = self.timeline_player.stop()
+            if success:
+                return {"ok": True, "message": "Playback stopped"}
+            else:
+                return {"ok": False, "message": "Failed to stop playback"}
+
+        @self.app.post("/api/playback/seek")
+        async def seek_playback(time: float):
+            """Seek to specific time (FR-003, SC-002)"""
+            if not self.timeline_player:
+                return {"ok": False, "message": "Timeline Player not enabled"}
+
+            success = self.timeline_player.seek(time)
+            if success:
+                return {"ok": True, "message": f"Seeked to {time:.2f}s"}
+            else:
+                return {"ok": False, "message": "Failed to seek"}
+
+        @self.app.post("/api/playback/speed")
+        async def set_playback_speed(speed: float):
+            """Set playback speed (FR-003, SC-003)"""
+            if not self.timeline_player:
+                return {"ok": False, "message": "Timeline Player not enabled"}
+
+            success = self.timeline_player.set_speed(speed)
+            if success:
+                return {"ok": True, "message": f"Speed set to {speed}x"}
+            else:
+                return {"ok": False, "message": "Failed to set speed"}
+
+        @self.app.post("/api/playback/range")
+        async def set_playback_range(start: float, end: float):
+            """Set playback range (FR-003)"""
+            if not self.timeline_player:
+                return {"ok": False, "message": "Timeline Player not enabled"}
+
+            success = self.timeline_player.set_range(start, end)
+            if success:
+                return {"ok": True, "message": f"Range set to [{start:.2f}, {end:.2f}]"}
+            else:
+                return {"ok": False, "message": "Failed to set range"}
+
+        @self.app.post("/api/playback/loop")
+        async def set_playback_loop(enabled: bool):
+            """Enable or disable loop (FR-003)"""
+            if not self.timeline_player:
+                return {"ok": False, "message": "Timeline Player not enabled"}
+
+            success = self.timeline_player.set_loop(enabled)
+            if success:
+                return {"ok": True, "message": f"Loop {'enabled' if enabled else 'disabled'}"}
+            else:
+                return {"ok": False, "message": "Failed to set loop"}
+
+        @self.app.get("/api/playback/status")
+        async def get_playback_status():
+            """Get playback status (FR-003, SC-004)"""
+            if not self.timeline_player:
+                return {"ok": False, "message": "Timeline Player not enabled"}
+
+            return self.timeline_player.get_status()
+
         # Metrics WebSocket endpoint
         @self.app.websocket("/ws/metrics")
         async def websocket_metrics(websocket):
@@ -894,6 +1021,62 @@ class SoundlabServer:
                 print(f"[Main] UI control WebSocket error: {e}")
                 import traceback
                 traceback.print_exc()
+
+        # Playback WebSocket endpoint (Feature 018)
+        @self.app.websocket("/ws/playback")
+        async def websocket_playback(websocket):
+            """WebSocket endpoint for playback frame streaming (FR-004)"""
+            from fastapi import WebSocket, WebSocketDisconnect
+            import json
+
+            if not self.timeline_player:
+                await websocket.close(code=1000, reason="Timeline Player not enabled")
+                return
+
+            await websocket.accept()
+            print("[Main] Playback WebSocket connected")
+
+            # List to store this client's frames
+            playback_frames = []
+            playback_lock = asyncio.Lock()
+
+            # Define frame callback to capture frames for this client
+            def frame_callback(frame):
+                """Capture playback frames for streaming"""
+                async def enqueue():
+                    async with playback_lock:
+                        playback_frames.append(frame)
+                        # Keep only last 10 frames to prevent memory buildup
+                        if len(playback_frames) > 10:
+                            playback_frames.pop(0)
+
+                asyncio.create_task(enqueue())
+
+            # Set the frame callback
+            old_callback = self.timeline_player.frame_callback
+            self.timeline_player.frame_callback = frame_callback
+
+            try:
+                # Stream frames to client
+                while True:
+                    # Check if there are frames to send
+                    async with playback_lock:
+                        if playback_frames:
+                            frame = playback_frames.pop(0)
+                            await websocket.send_json(frame)
+                        else:
+                            # No frames, wait a bit
+                            await asyncio.sleep(0.033)  # ~30 Hz
+
+            except WebSocketDisconnect:
+                print("[Main] Playback WebSocket disconnected")
+            except Exception as e:
+                print(f"[Main] Playback WebSocket error: {e}")
+                import traceback
+                traceback.print_exc()
+            finally:
+                # Restore old callback
+                self.timeline_player.frame_callback = old_callback
 
     def _mount_static_files(self):
         """Mount static file directories"""
@@ -1040,6 +1223,7 @@ def main():
     parser.add_argument("--enable-state-classifier", action="store_true", help="Enable State Classifier (consciousness state classification)")
     parser.add_argument("--enable-predictive-model", action="store_true", help="Enable Predictive Model (next-state forecasting)")
     parser.add_argument("--disable-session-recorder", action="store_true", help="Disable Session Recorder (recording enabled by default)")
+    parser.add_argument("--disable-timeline-player", action="store_true", help="Disable Timeline Player (playback enabled by default)")
     parser.add_argument("--list-devices", action="store_true", help="List available audio devices and exit")
 
     args = parser.parse_args()
@@ -1066,7 +1250,8 @@ def main():
         enable_state_memory=args.enable_state_memory,
         enable_state_classifier=args.enable_state_classifier,
         enable_predictive_model=args.enable_predictive_model,
-        enable_session_recorder=not args.disable_session_recorder
+        enable_session_recorder=not args.disable_session_recorder,
+        enable_timeline_player=not args.disable_timeline_player
     )
 
     server.run(
