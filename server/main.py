@@ -36,6 +36,7 @@ from criticality_balancer import CriticalityBalancer, CriticalityBalancerConfig
 from state_memory import StateMemory, StateMemoryConfig
 from state_classifier import StateClassifierGraph, StateClassifierConfig
 from predictive_model import PredictiveModel, PredictiveModelConfig
+from session_recorder import SessionRecorder, SessionRecorderConfig
 
 
 class SoundlabServer:
@@ -62,7 +63,8 @@ class SoundlabServer:
                  enable_criticality_balancer: bool = False,
                  enable_state_memory: bool = False,
                  enable_state_classifier: bool = False,
-                 enable_predictive_model: bool = False):
+                 enable_predictive_model: bool = False,
+                 enable_session_recorder: bool = True):
         """
         Initialize Soundlab server
 
@@ -332,6 +334,18 @@ class SoundlabServer:
                                   f"predicted_crit={predicted_criticality:.2f}, conf={confidence:.2f}")
 
             self.predictive_model.forecast_callback = forecast_callback
+
+        # Initialize Session Recorder (Feature 017)
+        if enable_session_recorder:
+            print("\n[Main] Initializing Session Recorder...")
+            session_recorder_config = SessionRecorderConfig(
+                sessions_dir="sessions",
+                sample_rate=self.audio_server.SAMPLE_RATE,
+                enable_logging=enable_logging
+            )
+            self.session_recorder = SessionRecorder(session_recorder_config)
+        else:
+            self.session_recorder = None
 
         # Initialize latency streamer (will be created by latency API)
         self.latency_streamer: Optional[LatencyStreamer] = None
@@ -660,6 +674,82 @@ class SoundlabServer:
             self.predictive_model.reset()
             return {"ok": True, "message": "Predictive model reset"}
 
+        # Session Recorder API endpoints (Feature 017)
+        @self.app.post("/api/record/start")
+        async def start_recording():
+            """Start session recording (FR-006)"""
+            if not self.session_recorder:
+                return {"ok": False, "message": "Session Recorder not enabled"}
+
+            success = self.session_recorder.start_recording()
+            if success:
+                status = self.session_recorder.get_status()
+                return {
+                    "ok": True,
+                    "message": "Recording started",
+                    "session_name": status['session_name'],
+                    "session_path": status['session_path']
+                }
+            else:
+                return {
+                    "ok": False,
+                    "message": self.session_recorder.last_error or "Failed to start recording"
+                }
+
+        @self.app.post("/api/record/stop")
+        async def stop_recording():
+            """Stop session recording (FR-006)"""
+            if not self.session_recorder:
+                return {"ok": False, "message": "Session Recorder not enabled"}
+
+            success = self.session_recorder.stop_recording()
+            if success:
+                status = self.session_recorder.get_status()
+                return {
+                    "ok": True,
+                    "message": "Recording stopped",
+                    "statistics": status.get('statistics', {})
+                }
+            else:
+                return {
+                    "ok": False,
+                    "message": self.session_recorder.last_error or "Failed to stop recording"
+                }
+
+        @self.app.get("/api/record/status")
+        async def get_recording_status():
+            """Get recording status (FR-006)"""
+            if not self.session_recorder:
+                return {"ok": False, "message": "Session Recorder not enabled"}
+
+            return self.session_recorder.get_status()
+
+        @self.app.get("/api/record/sessions")
+        async def list_sessions():
+            """List all recorded sessions (FR-006)"""
+            if not self.session_recorder:
+                return {"ok": False, "message": "Session Recorder not enabled"}
+
+            sessions = self.session_recorder.list_sessions()
+            return {
+                "ok": True,
+                "sessions": sessions,
+                "count": len(sessions)
+            }
+
+        @self.app.get("/api/record/estimate")
+        async def estimate_size(duration: float = 60.0):
+            """Estimate recording size (FR-007)"""
+            if not self.session_recorder:
+                return {"ok": False, "message": "Session Recorder not enabled"}
+
+            estimate = self.session_recorder.get_size_estimate(duration)
+            return {
+                "ok": True,
+                "duration_seconds": duration,
+                **estimate
+            }
+
         # Metrics WebSocket endpoint
         @self.app.websocket("/ws/metrics")
         async def websocket_metrics(websocket):
@@ -949,6 +1039,7 @@ def main():
     parser.add_argument("--enable-state-memory", action="store_true", help="Enable State Memory (temporal memory and prediction)")
     parser.add_argument("--enable-state-classifier", action="store_true", help="Enable State Classifier (consciousness state classification)")
     parser.add_argument("--enable-predictive-model", action="store_true", help="Enable Predictive Model (next-state forecasting)")
+    parser.add_argument("--disable-session-recorder", action="store_true", help="Disable Session Recorder (recording enabled by default)")
     parser.add_argument("--list-devices", action="store_true", help="List available audio devices and exit")
 
     args = parser.parse_args()
@@ -974,7 +1065,8 @@ def main():
         enable_criticality_balancer=args.enable_criticality_balancer,
         enable_state_memory=args.enable_state_memory,
         enable_state_classifier=args.enable_state_classifier,
-        enable_predictive_model=args.enable_predictive_model
+        enable_predictive_model=args.enable_predictive_model,
+        enable_session_recorder=not args.disable_session_recorder
     )
 
     server.run(
