@@ -1990,6 +1990,114 @@ class SoundlabServer:
                 "message": f"Sensor unbound: {sensor_id}" if success else f"Failed to unbind sensor: {sensor_id}"
             }
 
+        # Adaptive Control API endpoints (Feature 012)
+        @self.app.post("/api/adaptive-control/enable")
+        async def enable_adaptive_control(mode: str = "reactive"):
+            """Enable adaptive Phi control (Feature 012)"""
+            if not self.hybrid_node:
+                return {"ok": False, "message": "Hybrid Node not enabled"}
+
+            # Ensure sensor binding is enabled first
+            if not self.hybrid_node.phi_router:
+                self.hybrid_node.enable_sensor_binding()
+
+            success = self.hybrid_node.enable_adaptive_control(mode=mode)
+
+            return {
+                "ok": success,
+                "message": f"Adaptive control enabled ({mode} mode)" if success else "Failed to enable adaptive control",
+                "mode": mode
+            }
+
+        @self.app.post("/api/adaptive-control/disable")
+        async def disable_adaptive_control():
+            """Disable adaptive Phi control"""
+            if not self.hybrid_node:
+                return {"ok": False, "message": "Hybrid Node not enabled"}
+
+            self.hybrid_node.disable_adaptive_control()
+
+            return {
+                "ok": True,
+                "message": "Adaptive control disabled"
+            }
+
+        @self.app.get("/api/adaptive-control/status")
+        async def get_adaptive_control_status():
+            """Get adaptive control status (FR-004, SC-001, SC-002)"""
+            if not self.hybrid_node:
+                return {"ok": False, "message": "Hybrid Node not enabled"}
+
+            status = self.hybrid_node.get_adaptive_status()
+
+            if status is None:
+                return {
+                    "ok": True,
+                    "adaptive_enabled": False,
+                    "status": None
+                }
+
+            return {
+                "ok": True,
+                "adaptive_enabled": True,
+                "status": status
+            }
+
+        @self.app.post("/api/adaptive-control/manual-override")
+        async def set_adaptive_manual_override(enabled: bool):
+            """Set manual override for adaptive control (User Story 3, SC-004)"""
+            if not self.hybrid_node:
+                return {"ok": False, "message": "Hybrid Node not enabled"}
+
+            self.hybrid_node.set_adaptive_manual_override(enabled)
+
+            return {
+                "ok": True,
+                "message": f"Manual override {'enabled' if enabled else 'disabled'}",
+                "override_active": enabled
+            }
+
+        @self.app.post("/api/adaptive-control/trigger-learning")
+        async def trigger_adaptive_learning():
+            """Trigger learning from current session (User Story 2, FR-004)"""
+            if not self.hybrid_node:
+                return {"ok": False, "message": "Hybrid Node not enabled"}
+
+            success = self.hybrid_node.trigger_adaptive_learning()
+
+            return {
+                "ok": success,
+                "message": "Learning triggered" if success else "Failed to trigger learning"
+            }
+
+        @self.app.post("/api/adaptive-control/save-session")
+        async def save_adaptive_session(filepath: str):
+            """Save adaptive session to file (FR-003)"""
+            if not self.hybrid_node:
+                return {"ok": False, "message": "Hybrid Node not enabled"}
+
+            success = self.hybrid_node.save_adaptive_session(filepath)
+
+            return {
+                "ok": success,
+                "message": f"Session saved to {filepath}" if success else "Failed to save session",
+                "filepath": filepath
+            }
+
+        @self.app.post("/api/adaptive-control/load-session")
+        async def load_adaptive_session(filepath: str):
+            """Load adaptive session from file (FR-004)"""
+            if not self.hybrid_node:
+                return {"ok": False, "message": "Hybrid Node not enabled"}
+
+            success = self.hybrid_node.load_adaptive_session(filepath)
+
+            return {
+                "ok": success,
+                "message": f"Session loaded from {filepath}" if success else "Failed to load session",
+                "filepath": filepath
+            }
+
         # Metrics WebSocket endpoint
         @self.app.websocket("/ws/metrics")
         async def websocket_metrics(websocket):

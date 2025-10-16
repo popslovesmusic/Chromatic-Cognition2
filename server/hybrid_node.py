@@ -44,6 +44,13 @@ try:
 except ImportError:
     SENSOR_BINDING_AVAILABLE = False
 
+# Optional PhiAdaptiveController support (Feature 012)
+try:
+    from phi_adaptive_controller import PhiAdaptiveController, AdaptiveConfig, AdaptiveMode
+    ADAPTIVE_CONTROL_AVAILABLE = True
+except ImportError:
+    ADAPTIVE_CONTROL_AVAILABLE = False
+
 
 class PhiSource(Enum):
     """External Φ modulation source types"""
@@ -227,6 +234,9 @@ class HybridNode:
         self.sensor_inputs: Dict[str, any] = {}  # Active sensor inputs
         self.audio_beat_detector: Optional[AudioBeatDetector] = None
 
+        # Optional PhiAdaptiveController for feedback learning (Feature 012)
+        self.phi_adaptive: Optional[PhiAdaptiveController] = None
+
         # Audio stream
         self.stream = None
         self.is_running = False
@@ -359,6 +369,18 @@ class HybridNode:
             # Store current metrics (non-blocking)
             with self.metrics_lock:
                 self.current_metrics = metrics
+
+            # Feed metrics to adaptive controller (Feature 012)
+            if self.phi_adaptive:
+                self.phi_adaptive.update_metrics(
+                    ici=metrics.ici,
+                    coherence=metrics.phase_coherence,
+                    criticality=metrics.consciousness_level,  # Use consciousness as criticality proxy
+                    phi_value=phi_depth,  # Current Phi value (mapped to depth)
+                    phi_phase=phi_phase,
+                    phi_depth=phi_depth,
+                    active_source="adaptive"
+                )
 
             # Enqueue for broadcasting (non-blocking)
             try:
@@ -812,6 +834,155 @@ class HybridNode:
             "active_sensors": list(self.sensor_inputs.keys()),
             "router_status": asdict(router_status)
         }
+
+    # Adaptive Control Methods (Feature 012)
+
+    def enable_adaptive_control(self, mode: str = "reactive") -> bool:
+        """
+        Enable adaptive Phi control (Feature 012)
+
+        Args:
+            mode: Adaptive mode ("reactive", "predictive", or "learning")
+
+        Returns:
+            True if enabled successfully
+        """
+        if not ADAPTIVE_CONTROL_AVAILABLE:
+            if self.config.enable_logging:
+                print("[HybridNode] Adaptive control not available (missing phi_adaptive_controller)")
+            return False
+
+        if self.phi_adaptive:
+            if self.config.enable_logging:
+                print("[HybridNode] Adaptive control already enabled")
+            return True
+
+        # Create adaptive controller
+        adaptive_config = AdaptiveConfig(
+            target_ici=0.5,
+            ici_tolerance=0.05,
+            update_rate_hz=10.0,
+            enable_logging=self.config.enable_logging
+        )
+        self.phi_adaptive = PhiAdaptiveController(adaptive_config)
+
+        # Set Phi update callback to update router
+        def phi_update_callback(phi_value: float, phi_phase: float):
+            if self.phi_router:
+                # Update router's manual source with adaptive values
+                from phi_sensor_bridge import SensorData, SensorType
+                import time
+
+                data = SensorData(
+                    sensor_type=SensorType.MIDI_CC,
+                    timestamp=time.time(),
+                    raw_value=phi_value,
+                    normalized_value=phi_value,
+                    source_id="adaptive"
+                )
+                self.phi_router.update_source("adaptive", data)
+
+        self.phi_adaptive.set_phi_update_callback(phi_update_callback)
+
+        # Map mode string to enum
+        mode_map = {
+            "reactive": AdaptiveMode.REACTIVE,
+            "predictive": AdaptiveMode.PREDICTIVE,
+            "learning": AdaptiveMode.LEARNING
+        }
+        adaptive_mode = mode_map.get(mode.lower(), AdaptiveMode.REACTIVE)
+
+        # Enable controller
+        self.phi_adaptive.enable(adaptive_mode)
+
+        # Register adaptive source with router if available
+        if self.phi_router:
+            self.phi_router.register_source("adaptive", PhiSourcePriority.MANUAL)
+
+        if self.config.enable_logging:
+            print(f"[HybridNode] Adaptive control enabled ({mode} mode)")
+
+        return True
+
+    def disable_adaptive_control(self):
+        """Disable adaptive Phi control"""
+        if self.phi_adaptive:
+            self.phi_adaptive.disable()
+
+            # Unregister adaptive source from router
+            if self.phi_router:
+                self.phi_router.unregister_source("adaptive")
+
+            self.phi_adaptive = None
+
+            if self.config.enable_logging:
+                print("[HybridNode] Adaptive control disabled")
+
+    def set_adaptive_manual_override(self, enabled: bool):
+        """
+        Set manual override for adaptive control (SC-004)
+
+        Args:
+            enabled: True to enable manual override
+        """
+        if self.phi_adaptive:
+            self.phi_adaptive.set_manual_override(enabled)
+
+    def get_adaptive_status(self) -> Optional[Dict]:
+        """
+        Get adaptive control status (Feature 012)
+
+        Returns:
+            Dictionary with adaptive status or None if not enabled
+        """
+        if not self.phi_adaptive:
+            return None
+
+        status = self.phi_adaptive.get_status()
+        from dataclasses import asdict
+        return asdict(status)
+
+    def save_adaptive_session(self, filepath: str) -> bool:
+        """
+        Save current adaptive session to file
+
+        Args:
+            filepath: Path to save file
+
+        Returns:
+            True if saved successfully
+        """
+        if not self.phi_adaptive:
+            return False
+
+        return self.phi_adaptive.save_session(filepath)
+
+    def load_adaptive_session(self, filepath: str) -> bool:
+        """
+        Load adaptive session from file
+
+        Args:
+            filepath: Path to session file
+
+        Returns:
+            True if loaded successfully
+        """
+        if not self.phi_adaptive:
+            return False
+
+        return self.phi_adaptive.load_session(filepath)
+
+    def trigger_adaptive_learning(self) -> bool:
+        """
+        Trigger learning from current session
+
+        Returns:
+            True if learning successful
+        """
+        if not self.phi_adaptive:
+            return False
+
+        return self.phi_adaptive.learn_from_current_session()
 
     @staticmethod
     def list_midi_devices() -> List[str]:
