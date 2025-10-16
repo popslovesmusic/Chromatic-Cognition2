@@ -39,6 +39,7 @@ from predictive_model import PredictiveModel, PredictiveModelConfig
 from session_recorder import SessionRecorder, SessionRecorderConfig
 from timeline_player import TimelinePlayer, TimelinePlayerConfig
 from data_exporter import DataExporter, ExportConfig, ExportRequest, ExportFormat
+from node_sync import NodeSynchronizer, NodeSyncConfig, NodeRole
 
 
 class SoundlabServer:
@@ -68,7 +69,10 @@ class SoundlabServer:
                  enable_predictive_model: bool = False,
                  enable_session_recorder: bool = True,
                  enable_timeline_player: bool = True,
-                 enable_data_exporter: bool = True):
+                 enable_data_exporter: bool = True,
+                 enable_node_sync: bool = False,
+                 node_sync_role: str = "master",
+                 node_sync_master_url: Optional[str] = None):
         """
         Initialize Soundlab server
 
@@ -374,6 +378,20 @@ class SoundlabServer:
             self.data_exporter = DataExporter(data_exporter_config)
         else:
             self.data_exporter = None
+
+        # Initialize Node Synchronizer (Feature 020)
+        if enable_node_sync:
+            print("\n[Main] Initializing Node Synchronizer...")
+            node_role = NodeRole.MASTER if node_sync_role.lower() == "master" else NodeRole.CLIENT
+            node_sync_config = NodeSyncConfig(
+                role=node_role,
+                master_url=node_sync_master_url,
+                sync_rate=30,
+                enable_logging=enable_logging
+            )
+            self.node_sync = NodeSynchronizer(node_sync_config)
+        else:
+            self.node_sync = None
 
         # Initialize latency streamer (will be created by latency API)
         self.latency_streamer: Optional[LatencyStreamer] = None
@@ -969,6 +987,85 @@ class SoundlabServer:
                 **stats
             }
 
+        # Node Synchronizer API endpoints (Feature 020)
+        @self.app.post("/api/node/register")
+        async def register_node(node_id: str, node_info: Dict):
+            """Register client node (master only) (FR-007)"""
+            if not self.node_sync:
+                return {"ok": False, "message": "Node Synchronizer not enabled"}
+
+            if self.node_sync.role != NodeRole.MASTER:
+                return {"ok": False, "message": "Only master can register clients"}
+
+            self.node_sync.register_client(node_id, node_info)
+            return {
+                "ok": True,
+                "message": f"Node {node_id} registered"
+            }
+
+        @self.app.post("/api/node/unregister")
+        async def unregister_node(node_id: str):
+            """Unregister client node (master only) (FR-007)"""
+            if not self.node_sync:
+                return {"ok": False, "message": "Node Synchronizer not enabled"}
+
+            if self.node_sync.role != NodeRole.MASTER:
+                return {"ok": False, "message": "Only master can unregister clients"}
+
+            self.node_sync.unregister_client(node_id)
+            return {
+                "ok": True,
+                "message": f"Node {node_id} unregistered"
+            }
+
+        @self.app.get("/api/node/status")
+        async def get_node_status():
+            """Get node synchronizer status (FR-007, FR-008)"""
+            if not self.node_sync:
+                return {"ok": False, "message": "Node Synchronizer not enabled"}
+
+            status = self.node_sync.get_status()
+            return {
+                "ok": True,
+                **status
+            }
+
+        @self.app.get("/api/node/stats")
+        async def get_node_statistics():
+            """Get node synchronizer statistics (SC-001, SC-002)"""
+            if not self.node_sync:
+                return {"ok": False, "message": "Node Synchronizer not enabled"}
+
+            stats = self.node_sync.get_statistics()
+            return {
+                "ok": True,
+                **stats
+            }
+
+        @self.app.post("/api/node/start")
+        async def start_node_sync():
+            """Start node synchronizer"""
+            if not self.node_sync:
+                return {"ok": False, "message": "Node Synchronizer not enabled"}
+
+            await self.node_sync.start()
+            return {
+                "ok": True,
+                "message": "Node synchronizer started"
+            }
+
+        @self.app.post("/api/node/stop")
+        async def stop_node_sync():
+            """Stop node synchronizer"""
+            if not self.node_sync:
+                return {"ok": False, "message": "Node Synchronizer not enabled"}
+
+            await self.node_sync.stop()
+            return {
+                "ok": True,
+                "message": "Node synchronizer stopped"
+            }
+
         # Metrics WebSocket endpoint
         @self.app.websocket("/ws/metrics")
         async def websocket_metrics(websocket):
@@ -1170,6 +1267,114 @@ class SoundlabServer:
                 # Restore old callback
                 self.timeline_player.frame_callback = old_callback
 
+        # Node Sync WebSocket endpoint (Feature 020)
+        @self.app.websocket("/ws/sync")
+        async def websocket_node_sync(websocket):
+            """WebSocket endpoint for node synchronization (FR-003)"""
+            from fastapi import WebSocket, WebSocketDisconnect
+            import json
+
+            if not self.node_sync:
+                await websocket.close(code=1000, reason="Node Synchronizer not enabled")
+                return
+
+            await websocket.accept()
+            print("[Main] Node sync WebSocket connected")
+
+            # Determine if this is master or client
+            if self.node_sync.role == NodeRole.MASTER:
+                # Master mode: broadcast sync frames to this client
+                client_id = None
+
+                try:
+                    # Wait for client registration
+                    data = await websocket.receive_json()
+                    if data.get("type") == "register":
+                        client_id = data.get("node_id", f"client_{int(time.time() * 1000)}")
+                        client_info = data.get("info", {})
+                        self.node_sync.register_client(client_id, client_info)
+
+                        # Send confirmation
+                        await websocket.send_json({
+                            "type": "registered",
+                            "node_id": client_id
+                        })
+
+                        # Broadcast loop: send sync frames to this client
+                        while True:
+                            # Get current state from auto-phi learner
+                            if self.auto_phi_learner:
+                                phi_phase = self.auto_phi_learner.state.phi_phase
+                                phi_depth = self.auto_phi_learner.state.phi_depth
+                                criticality = self.auto_phi_learner.state.criticality
+                                coherence = self.auto_phi_learner.state.coherence
+                                ici = getattr(self.audio_server, 'last_ici', 0.0)
+
+                                # Process and broadcast
+                                self.node_sync.process_local_state(
+                                    phi_phase, phi_depth, criticality, coherence, ici
+                                )
+
+                                # Send sync frame
+                                frame_data = {
+                                    "type": "sync_frame",
+                                    "phi_phase": phi_phase,
+                                    "phi_depth": phi_depth,
+                                    "criticality": criticality,
+                                    "coherence": coherence,
+                                    "ici": ici,
+                                    "timestamp": time.time(),
+                                    "master_timestamp": time.time(),
+                                    "sequence": self.node_sync.sequence_counter - 1
+                                }
+
+                                await websocket.send_json(frame_data)
+
+                            # Wait for next sync interval (30 Hz)
+                            await asyncio.sleep(1.0 / self.node_sync.config.sync_rate)
+
+                except WebSocketDisconnect:
+                    print(f"[Main] Node sync WebSocket disconnected (client={client_id})")
+                    if client_id:
+                        self.node_sync.unregister_client(client_id)
+
+            else:
+                # Client mode: receive sync frames from master
+                try:
+                    # Register with master
+                    await websocket.send_json({
+                        "type": "register",
+                        "node_id": self.node_sync.node_id,
+                        "info": {}
+                    })
+
+                    # Receive loop
+                    while True:
+                        data = await websocket.receive_json()
+
+                        if data.get("type") == "sync_frame":
+                            # Process received frame
+                            await self.node_sync.receive_sync_frame(data)
+
+                            # Apply sync frame to local state
+                            if self.auto_phi_learner:
+                                # Update phi parameters from master
+                                self.audio_server.update_parameter(
+                                    param_type='phi',
+                                    channel=None,
+                                    param_name='depth',
+                                    value=data['phi_depth']
+                                )
+                                self.audio_server.update_parameter(
+                                    param_type='phi',
+                                    channel=None,
+                                    param_name='phase',
+                                    value=data['phi_phase']
+                                )
+
+                except WebSocketDisconnect:
+                    print("[Main] Node sync WebSocket disconnected from master")
+
     def _mount_static_files(self):
         """Mount static file directories"""
         # Mount frontend files if they exist
@@ -1317,6 +1522,9 @@ def main():
     parser.add_argument("--disable-session-recorder", action="store_true", help="Disable Session Recorder (recording enabled by default)")
     parser.add_argument("--disable-timeline-player", action="store_true", help="Disable Timeline Player (playback enabled by default)")
     parser.add_argument("--disable-data-exporter", action="store_true", help="Disable Data Exporter (export enabled by default)")
+    parser.add_argument("--enable-node-sync", action="store_true", help="Enable Node Synchronizer (distributed phase-locked operation)")
+    parser.add_argument("--node-sync-role", default="master", choices=["master", "client"], help="Node role: master (authority) or client (subscriber)")
+    parser.add_argument("--node-sync-master-url", help="Master WebSocket URL for client nodes (e.g., ws://192.168.1.100:8000/ws/sync)")
     parser.add_argument("--list-devices", action="store_true", help="List available audio devices and exit")
 
     args = parser.parse_args()
@@ -1345,7 +1553,10 @@ def main():
         enable_predictive_model=args.enable_predictive_model,
         enable_session_recorder=not args.disable_session_recorder,
         enable_timeline_player=not args.disable_timeline_player,
-        enable_data_exporter=not args.disable_data_exporter
+        enable_data_exporter=not args.disable_data_exporter,
+        enable_node_sync=args.enable_node_sync,
+        node_sync_role=args.node_sync_role,
+        node_sync_master_url=args.node_sync_master_url
     )
 
     server.run(
