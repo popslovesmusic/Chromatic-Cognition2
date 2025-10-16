@@ -1869,6 +1869,127 @@ class SoundlabServer:
                 "message": "Statistics reset"
             }
 
+        # Sensor Binding API endpoints (Feature 011)
+        @self.app.post("/api/sensor-binding/enable")
+        async def enable_sensor_binding():
+            """Enable sensor binding with PhiRouter (Feature 011)"""
+            if not self.hybrid_node:
+                return {"ok": False, "message": "Hybrid Node not enabled"}
+
+            success = self.hybrid_node.enable_sensor_binding()
+            return {
+                "ok": success,
+                "message": "Sensor binding enabled" if success else "Failed to enable sensor binding"
+            }
+
+        @self.app.post("/api/sensor-binding/disable")
+        async def disable_sensor_binding():
+            """Disable sensor binding"""
+            if not self.hybrid_node:
+                return {"ok": False, "message": "Hybrid Node not enabled"}
+
+            self.hybrid_node.disable_sensor_binding()
+            return {
+                "ok": True,
+                "message": "Sensor binding disabled"
+            }
+
+        @self.app.get("/api/sensor-binding/status")
+        async def get_sensor_binding_status():
+            """Get sensor binding status (FR-004)"""
+            if not self.hybrid_node:
+                return {"ok": False, "message": "Hybrid Node not enabled"}
+
+            status = self.hybrid_node.get_sensor_status()
+            return {
+                "ok": True,
+                **status
+            }
+
+        @self.app.get("/api/sensor-binding/midi-devices")
+        async def list_midi_devices():
+            """List available MIDI devices (User Story 1)"""
+            devices = HybridNode.list_midi_devices()
+            return {
+                "ok": True,
+                "devices": devices,
+                "count": len(devices)
+            }
+
+        @self.app.get("/api/sensor-binding/serial-devices")
+        async def list_serial_devices():
+            """List available serial devices (User Story 1)"""
+            devices = HybridNode.list_serial_devices()
+            return {
+                "ok": True,
+                "devices": devices,
+                "count": len(devices)
+            }
+
+        @self.app.post("/api/sensor-binding/bind-midi")
+        async def bind_midi_sensor(device_id: Optional[str] = None, cc_number: int = 1, channel: int = 0):
+            """Bind MIDI controller as Φ source (FR-001, User Story 1)"""
+            if not self.hybrid_node:
+                return {"ok": False, "message": "Hybrid Node not enabled"}
+
+            success = self.hybrid_node.bind_midi_sensor(
+                device_id=device_id,
+                cc_number=cc_number,
+                channel=channel
+            )
+
+            return {
+                "ok": success,
+                "message": f"MIDI CC{cc_number} bound" if success else "Failed to bind MIDI",
+                "sensor_id": f"midi_cc{cc_number}"
+            }
+
+        @self.app.post("/api/sensor-binding/bind-serial")
+        async def bind_serial_sensor(device_id: Optional[str] = None, baudrate: int = 9600,
+                                     input_min: float = 0.0, input_max: float = 1.0):
+            """Bind serial sensor as Φ source (FR-001, User Story 1)"""
+            if not self.hybrid_node:
+                return {"ok": False, "message": "Hybrid Node not enabled"}
+
+            success = self.hybrid_node.bind_serial_sensor(
+                device_id=device_id,
+                baudrate=baudrate,
+                input_range=(input_min, input_max)
+            )
+
+            return {
+                "ok": success,
+                "message": f"Serial sensor bound: {device_id}" if success else "Failed to bind serial sensor",
+                "sensor_id": f"serial_{device_id or 'auto'}"
+            }
+
+        @self.app.post("/api/sensor-binding/bind-audio-beat")
+        async def bind_audio_beat_detector():
+            """Bind audio beat detector as Φ source (FR-001)"""
+            if not self.hybrid_node:
+                return {"ok": False, "message": "Hybrid Node not enabled"}
+
+            success = self.hybrid_node.bind_audio_beat_detector()
+
+            return {
+                "ok": success,
+                "message": "Audio beat detector bound" if success else "Failed to bind audio beat detector",
+                "sensor_id": "audio_beat"
+            }
+
+        @self.app.post("/api/sensor-binding/unbind")
+        async def unbind_sensor(sensor_id: str):
+            """Unbind a sensor (User Story 2)"""
+            if not self.hybrid_node:
+                return {"ok": False, "message": "Hybrid Node not enabled"}
+
+            success = self.hybrid_node.unbind_sensor(sensor_id)
+
+            return {
+                "ok": success,
+                "message": f"Sensor unbound: {sensor_id}" if success else f"Failed to unbind sensor: {sensor_id}"
+            }
+
         # Metrics WebSocket endpoint
         @self.app.websocket("/ws/metrics")
         async def websocket_metrics(websocket):

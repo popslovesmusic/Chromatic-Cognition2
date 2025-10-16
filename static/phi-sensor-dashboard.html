@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Φ Sensor Dashboard - Soundlab</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #fff;
+        }
+        .container { max-width: 1400px; margin: 0 auto; }
+        h1 { text-align: center; margin-bottom: 30px; font-size: 2.5em; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
+        .card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+            border: 1px solid rgba(255, 255, 255, 0.18);
+        }
+        h2 { margin-bottom: 20px; font-size: 1.5em; }
+        button {
+            padding: 12px 24px;
+            border-radius: 8px;
+            border: none;
+            background: rgba(76, 175, 80, 0.6);
+            color: #fff;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 5px;
+            transition: all 0.3s;
+        }
+        button:hover { background: rgba(76, 175, 80, 0.8); transform: translateY(-2px); }
+        button:disabled { background: rgba(128, 128, 128, 0.4); cursor: not-allowed; }
+        select {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            background: rgba(255, 255, 255, 0.2);
+            color: #fff;
+            font-size: 16px;
+            margin-bottom: 15px;
+        }
+        .sensor-list { display: flex; flex-wrap: wrap; gap: 10px; }
+        .sensor-badge {
+            background: rgba(76, 175, 80, 0.6);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .sensor-badge button {
+            padding: 4px 12px;
+            margin: 0;
+            font-size: 12px;
+            background: rgba(244, 67, 54, 0.6);
+        }
+        .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
+        .metric {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .metric-value { font-size: 2em; font-weight: bold; margin: 10px 0; }
+        .metric-label { font-size: 0.9em; opacity: 0.8; }
+        .status { display: inline-block; padding: 5px 15px; border-radius: 20px; font-size: 0.9em; font-weight: 600; }
+        .status.active { background: rgba(76, 175, 80, 0.6); }
+        .status.inactive { background: rgba(244, 67, 54, 0.6); }
+        #chart { width: 100%; height: 200px; background: rgba(0,0,0,0.2); border-radius: 8px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Φ Sensor Dashboard</h1>
+
+        <!-- Sensor Binding Control -->
+        <div class="card">
+            <h2>Sensor Binding <span class="status inactive" id="bindingStatus">INACTIVE</span></h2>
+            <button id="enableBinding">Enable Sensor Binding</button>
+            <button id="disableBinding" disabled>Disable Sensor Binding</button>
+        </div>
+
+        <!-- Bind MIDI -->
+        <div class="card">
+            <h2>MIDI Controller (User Story 1)</h2>
+            <select id="midiDevice">
+                <option value="">Select MIDI Device...</option>
+            </select>
+            <div>
+                <label>CC Number: <input type="number" id="ccNumber" value="1" min="0" max="127" style="width:80px;padding:8px"></label>
+                <label>Channel: <input type="number" id="midiChannel" value="0" min="0" max="15" style="width:60px;padding:8px"></label>
+            </div>
+            <button id="bindMidi">Bind MIDI</button>
+        </div>
+
+        <!-- Bind Serial Sensor -->
+        <div class="card">
+            <h2>Serial Sensor (User Story 1)</h2>
+            <select id="serialDevice">
+                <option value="">Select Serial Port...</option>
+            </select>
+            <button id="bindSerial">Bind Serial Sensor</button>
+            <button id="bindAudioBeat">Bind Audio Beat Detector</button>
+        </div>
+
+        <!-- Active Sensors -->
+        <div class="card">
+            <h2>Active Sensors (User Story 2)</h2>
+            <div class="sensor-list" id="activeSensors">
+                <p>No sensors bound</p>
+            </div>
+        </div>
+
+        <!-- Router Status (User Story 3) -->
+        <div class="card">
+            <h2>Router Status (FR-004)</h2>
+            <div class="metrics-grid">
+                <div class="metric">
+                    <div class="metric-label">Active Source</div>
+                    <div class="metric-value" id="activeSource">--</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Φ Value</div>
+                    <div class="metric-value" id="phiValue">--</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Update Rate (Hz)</div>
+                    <div class="metric-value" id="updateRate">--</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Fallback Mode</div>
+                    <div class="metric-value" id="fallbackMode">--</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Φ Value Graph (User Story 3) -->
+        <div class="card">
+            <h2>Φ Telemetry (SC-003)</h2>
+            <canvas id="chart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        const elements = {
+            bindingStatus: document.getElementById('bindingStatus'),
+            enableBinding: document.getElementById('enableBinding'),
+            disableBinding: document.getElementById('disableBinding'),
+            midiDevice: document.getElementById('midiDevice'),
+            serialDevice: document.getElementById('serialDevice'),
+            bindMidi: document.getElementById('bindMidi'),
+            bindSerial: document.getElementById('bindSerial'),
+            bindAudioBeat: document.getElementById('bindAudioBeat'),
+            activeSensors: document.getElementById('activeSensors'),
+            activeSource: document.getElementById('activeSource'),
+            phiValue: document.getElementById('phiValue'),
+            updateRate: document.getElementById('updateRate'),
+            fallbackMode: document.getElementById('fallbackMode'),
+            chart: document.getElementById('chart')
+        };
+
+        // Chart setup
+        const ctx = elements.chart.getContext('2d');
+        const phiHistory = [];
+        const maxHistory = 100;
+
+        function drawChart() {
+            ctx.clearRect(0, 0, elements.chart.width, elements.chart.height);
+            ctx.strokeStyle = '#4CAF50';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+
+            for (let i = 0; i < phiHistory.length; i++) {
+                const x = (i / maxHistory) * elements.chart.width;
+                const y = elements.chart.height - (phiHistory[i] - 0.618) / (1.618 - 0.618) * elements.chart.height;
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+        }
+
+        // Enable sensor binding
+        elements.enableBinding.addEventListener('click', async () => {
+            const response = await fetch('/api/sensor-binding/enable', { method: 'POST' });
+            const data = await response.json();
+
+            if (data.ok) {
+                elements.bindingStatus.textContent = 'ACTIVE';
+                elements.bindingStatus.className = 'status active';
+                elements.enableBinding.disabled = true;
+                elements.disableBinding.disabled = false;
+                loadDevices();
+            }
+        });
+
+        // Disable sensor binding
+        elements.disableBinding.addEventListener('click', async () => {
+            const response = await fetch('/api/sensor-binding/disable', { method: 'POST' });
+            const data = await response.json();
+
+            if (data.ok) {
+                elements.bindingStatus.textContent = 'INACTIVE';
+                elements.bindingStatus.className = 'status inactive';
+                elements.enableBinding.disabled = false;
+                elements.disableBinding.disabled = true;
+            }
+        });
+
+        // Load devices
+        async function loadDevices() {
+            // Load MIDI devices
+            const midiResp = await fetch('/api/sensor-binding/midi-devices');
+            const midiData = await midiResp.json();
+            elements.midiDevice.innerHTML = '<option value="">Select MIDI Device...</option>';
+            midiData.devices.forEach(dev => {
+                elements.midiDevice.innerHTML += `<option value="${dev}">${dev}</option>`;
+            });
+
+            // Load serial devices
+            const serialResp = await fetch('/api/sensor-binding/serial-devices');
+            const serialData = await serialResp.json();
+            elements.serialDevice.innerHTML = '<option value="">Select Serial Port...</option>';
+            serialData.devices.forEach(dev => {
+                elements.serialDevice.innerHTML += `<option value="${dev}">${dev}</option>`;
+            });
+        }
+
+        // Bind MIDI
+        elements.bindMidi.addEventListener('click', async () => {
+            const device = elements.midiDevice.value || null;
+            const ccNumber = parseInt(document.getElementById('ccNumber').value);
+            const channel = parseInt(document.getElementById('midiChannel').value);
+
+            const response = await fetch(`/api/sensor-binding/bind-midi?cc_number=${ccNumber}&channel=${channel}${device ? '&device_id=' + device : ''}`, {
+                method: 'POST'
+            });
+            const data = await response.json();
+
+            alert(data.message);
+            if (data.ok) updateStatus();
+        });
+
+        // Bind serial sensor
+        elements.bindSerial.addEventListener('click', async () => {
+            const device = elements.serialDevice.value || null;
+            const response = await fetch(`/api/sensor-binding/bind-serial${device ? '?device_id=' + device : ''}`, {
+                method: 'POST'
+            });
+            const data = await response.json();
+
+            alert(data.message);
+            if (data.ok) updateStatus();
+        });
+
+        // Bind audio beat
+        elements.bindAudioBeat.addEventListener('click', async () => {
+            const response = await fetch('/api/sensor-binding/bind-audio-beat', {
+                method: 'POST'
+            });
+            const data = await response.json();
+
+            alert(data.message);
+            if (data.ok) updateStatus();
+        });
+
+        // Update status
+        async function updateStatus() {
+            const response = await fetch('/api/sensor-binding/status');
+            const data = await response.json();
+
+            if (data.ok) {
+                // Update active sensors
+                if (data.active_sensors && data.active_sensors.length > 0) {
+                    elements.activeSensors.innerHTML = '';
+                    data.active_sensors.forEach(sensorId => {
+                        const badge = document.createElement('div');
+                        badge.className = 'sensor-badge';
+                        badge.innerHTML = `${sensorId} <button onclick="unbindSensor('${sensorId}')">✕</button>`;
+                        elements.activeSensors.appendChild(badge);
+                    });
+                } else {
+                    elements.activeSensors.innerHTML = '<p>No sensors bound</p>';
+                }
+
+                // Update router status
+                if (data.router_status) {
+                    const rs = data.router_status;
+                    elements.activeSource.textContent = rs.active_source;
+                    elements.phiValue.textContent = rs.phi_value.toFixed(3);
+                    elements.updateRate.textContent = rs.update_rate_hz.toFixed(1);
+                    elements.fallbackMode.textContent = rs.is_fallback_mode ? 'YES' : 'NO';
+
+                    // Update chart
+                    phiHistory.push(rs.phi_value);
+                    if (phiHistory.length > maxHistory) phiHistory.shift();
+                    drawChart();
+                }
+            }
+        }
+
+        // Unbind sensor
+        async function unbindSensor(sensorId) {
+            const response = await fetch(`/api/sensor-binding/unbind?sensor_id=${sensorId}`, {
+                method: 'POST'
+            });
+            const data = await response.json();
+
+            alert(data.message);
+            if (data.ok) updateStatus();
+        }
+
+        // Poll status
+        setInterval(updateStatus, 100);  // SC-001: < 100 ms update
+
+        // Initial load
+        (async () => {
+            const statusResp = await fetch('/api/sensor-binding/status');
+            const statusData = await statusResp.json();
+
+            if (statusData.ok && statusData.sensor_binding_enabled) {
+                elements.bindingStatus.textContent = 'ACTIVE';
+                elements.bindingStatus.className = 'status active';
+                elements.enableBinding.disabled = true;
+                elements.disableBinding.disabled = false;
+                loadDevices();
+            }
+        })();
+
+        // Resize canvas
+        function resizeCanvas() {
+            elements.chart.width = elements.chart.offsetWidth;
+            elements.chart.height = 200;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+    </script>
+</body>
+</html>

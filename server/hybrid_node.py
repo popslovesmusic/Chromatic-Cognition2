@@ -35,6 +35,15 @@ from enum import Enum
 
 from chromatic_field_processor import ChromaticFieldProcessor
 
+# Optional PhiRouter support (Feature 011)
+try:
+    from phi_router import PhiRouter, PhiRouterConfig, PhiSourcePriority
+    from phi_sensor_bridge import (MIDIInput, SerialSensorInput, AudioBeatDetector,
+                                   SensorType, SensorConfig, SensorData)
+    SENSOR_BINDING_AVAILABLE = True
+except ImportError:
+    SENSOR_BINDING_AVAILABLE = False
+
 
 class PhiSource(Enum):
     """External Φ modulation source types"""
@@ -213,6 +222,11 @@ class HybridNode:
         # Initialize Φ modulator
         self.phi_modulator = PhiModulator(source=self.config.phi_source)
 
+        # Optional PhiRouter for sensor binding (Feature 011)
+        self.phi_router: Optional[PhiRouter] = None
+        self.sensor_inputs: Dict[str, any] = {}  # Active sensor inputs
+        self.audio_beat_detector: Optional[AudioBeatDetector] = None
+
         # Audio stream
         self.stream = None
         self.is_running = False
@@ -275,11 +289,22 @@ class HybridNode:
             dt = current_time - self.last_callback_time
             self.last_callback_time = current_time
 
-            phi_phase, phi_depth = self.phi_modulator.update(dt)
+            # Use PhiRouter if available (Feature 011), otherwise use PhiModulator
+            if self.phi_router:
+                # Get Φ from router (which manages multiple sources)
+                phi_value, phi_phase = self.phi_router.get_current_phi()
+                phi_depth = phi_value  # Use Φ value as depth
 
-            # Feed microphone input to modulator if needed
-            if self.phi_modulator.source == PhiSource.MICROPHONE:
-                self.phi_modulator.feed_microphone_input(mono_input)
+                # Feed audio to beat detector if active
+                if self.audio_beat_detector:
+                    self.audio_beat_detector.process_audio(mono_input, self.config.sample_rate)
+            else:
+                # Use simple PhiModulator
+                phi_phase, phi_depth = self.phi_modulator.update(dt)
+
+                # Feed microphone input to modulator if needed
+                if self.phi_modulator.source == PhiSource.MICROPHONE:
+                    self.phi_modulator.feed_microphone_input(mono_input)
 
             # Process through ChromaticFieldProcessor (FR-006)
             # Returns [num_channels, block_size] multi-channel output
@@ -554,6 +579,265 @@ class HybridNode:
         self.process_time_history.clear()
         self.dropout_count = 0
         self.frame_count = 0
+
+    # Sensor Binding Methods (Feature 011)
+
+    def enable_sensor_binding(self) -> bool:
+        """
+        Enable sensor binding with PhiRouter (Feature 011)
+
+        Returns:
+            True if enabled successfully
+        """
+        if not SENSOR_BINDING_AVAILABLE:
+            if self.config.enable_logging:
+                print("[HybridNode] Sensor binding not available (missing phi_router/phi_sensor_bridge)")
+            return False
+
+        if self.phi_router:
+            if self.config.enable_logging:
+                print("[HybridNode] Sensor binding already enabled")
+            return True
+
+        # Create PhiRouter
+        router_config = PhiRouterConfig(enable_logging=self.config.enable_logging)
+        self.phi_router = PhiRouter(router_config)
+
+        # Register internal and manual sources
+        self.phi_router.register_source("internal", PhiSourcePriority.INTERNAL)
+        self.phi_router.register_source("manual", PhiSourcePriority.MANUAL)
+
+        # Start router
+        self.phi_router.start()
+
+        if self.config.enable_logging:
+            print("[HybridNode] ✓ Sensor binding enabled")
+
+        return True
+
+    def disable_sensor_binding(self):
+        """Disable sensor binding and stop all sensor inputs"""
+        # Stop all sensor inputs
+        for sensor_id, sensor_input in self.sensor_inputs.items():
+            if hasattr(sensor_input, 'stop'):
+                sensor_input.stop()
+
+        self.sensor_inputs.clear()
+
+        # Stop router
+        if self.phi_router:
+            self.phi_router.stop()
+            self.phi_router = None
+
+        if self.config.enable_logging:
+            print("[HybridNode] Sensor binding disabled")
+
+    def bind_midi_sensor(self, device_id: Optional[str] = None, cc_number: int = 1, channel: int = 0) -> bool:
+        """
+        Bind MIDI controller as Φ source (Feature 011, FR-001)
+
+        Args:
+            device_id: MIDI device name (None = first available)
+            cc_number: MIDI CC number to monitor (0-127)
+            channel: MIDI channel (0-15)
+
+        Returns:
+            True if bound successfully
+        """
+        if not self.phi_router:
+            if not self.enable_sensor_binding():
+                return False
+
+        sensor_id = f"midi_cc{cc_number}"
+
+        # Create MIDI input
+        config = SensorConfig(
+            sensor_type=SensorType.MIDI_CC,
+            device_id=device_id,
+            midi_cc_number=cc_number,
+            midi_channel=channel,
+            enable_logging=self.config.enable_logging
+        )
+
+        def midi_callback(data: SensorData):
+            self.phi_router.update_source(sensor_id, data)
+
+        midi_input = MIDIInput(config, midi_callback)
+
+        if not midi_input.connect():
+            return False
+
+        # Register with router
+        self.phi_router.register_source(sensor_id, PhiSourcePriority.MIDI)
+
+        # Start MIDI input
+        if not midi_input.start():
+            return False
+
+        self.sensor_inputs[sensor_id] = midi_input
+
+        if self.config.enable_logging:
+            print(f"[HybridNode] ✓ MIDI CC{cc_number} bound")
+
+        return True
+
+    def bind_serial_sensor(self, device_id: Optional[str] = None, baudrate: int = 9600,
+                          input_range: tuple[float, float] = (0.0, 1.0)) -> bool:
+        """
+        Bind serial sensor as Φ source (Feature 011, FR-001)
+
+        Args:
+            device_id: Serial port name (None = first available)
+            baudrate: Serial baudrate
+            input_range: Expected input value range
+
+        Returns:
+            True if bound successfully
+        """
+        if not self.phi_router:
+            if not self.enable_sensor_binding():
+                return False
+
+        sensor_id = f"serial_{device_id or 'auto'}"
+
+        # Create serial sensor input
+        config = SensorConfig(
+            sensor_type=SensorType.SERIAL_ANALOG,
+            device_id=device_id,
+            serial_baudrate=baudrate,
+            input_range=input_range,
+            enable_logging=self.config.enable_logging
+        )
+
+        def serial_callback(data: SensorData):
+            self.phi_router.update_source(sensor_id, data)
+
+        serial_input = SerialSensorInput(config, serial_callback)
+
+        if not serial_input.connect():
+            return False
+
+        # Register with router
+        self.phi_router.register_source(sensor_id, PhiSourcePriority.SERIAL)
+
+        # Start serial input
+        if not serial_input.start():
+            return False
+
+        self.sensor_inputs[sensor_id] = serial_input
+
+        if self.config.enable_logging:
+            print(f"[HybridNode] ✓ Serial sensor bound: {device_id}")
+
+        return True
+
+    def bind_audio_beat_detector(self) -> bool:
+        """
+        Bind audio beat detector as Φ source (Feature 011, FR-001)
+
+        Returns:
+            True if bound successfully
+        """
+        if not self.phi_router:
+            if not self.enable_sensor_binding():
+                return False
+
+        sensor_id = "audio_beat"
+
+        # Create beat detector
+        config = SensorConfig(
+            sensor_type=SensorType.AUDIO_BEAT,
+            enable_logging=self.config.enable_logging
+        )
+
+        def beat_callback(data: SensorData):
+            self.phi_router.update_source(sensor_id, data)
+
+        self.audio_beat_detector = AudioBeatDetector(config, beat_callback)
+
+        # Register with router
+        self.phi_router.register_source(sensor_id, PhiSourcePriority.AUDIO_BEAT)
+
+        if self.config.enable_logging:
+            print(f"[HybridNode] ✓ Audio beat detector bound")
+
+        return True
+
+    def unbind_sensor(self, sensor_id: str) -> bool:
+        """
+        Unbind a sensor
+
+        Args:
+            sensor_id: Sensor identifier to unbind
+
+        Returns:
+            True if unbound successfully
+        """
+        if sensor_id in self.sensor_inputs:
+            sensor_input = self.sensor_inputs[sensor_id]
+
+            if hasattr(sensor_input, 'stop'):
+                sensor_input.stop()
+
+            del self.sensor_inputs[sensor_id]
+
+            if self.phi_router:
+                self.phi_router.unregister_source(sensor_id)
+
+            if self.config.enable_logging:
+                print(f"[HybridNode] Sensor unbound: {sensor_id}")
+
+            return True
+
+        return False
+
+    def get_sensor_status(self) -> Dict:
+        """
+        Get sensor binding status (Feature 011, FR-004)
+
+        Returns:
+            Dictionary with sensor status
+        """
+        if not self.phi_router:
+            return {
+                "sensor_binding_enabled": False,
+                "active_sensors": [],
+                "router_status": None
+            }
+
+        router_status = self.phi_router.get_status()
+
+        return {
+            "sensor_binding_enabled": True,
+            "active_sensors": list(self.sensor_inputs.keys()),
+            "router_status": asdict(router_status)
+        }
+
+    @staticmethod
+    def list_midi_devices() -> List[str]:
+        """
+        List available MIDI devices
+
+        Returns:
+            List of MIDI device names
+        """
+        if not SENSOR_BINDING_AVAILABLE:
+            return []
+
+        return MIDIInput.list_devices()
+
+    @staticmethod
+    def list_serial_devices() -> List[str]:
+        """
+        List available serial devices
+
+        Returns:
+            List of serial port names
+        """
+        if not SENSOR_BINDING_AVAILABLE:
+            return []
+
+        return SerialSensorInput.list_devices()
 
     @staticmethod
     def list_audio_devices() -> List[Dict]:
