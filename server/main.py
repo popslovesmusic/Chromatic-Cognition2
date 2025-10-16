@@ -40,6 +40,7 @@ from session_recorder import SessionRecorder, SessionRecorderConfig
 from timeline_player import TimelinePlayer, TimelinePlayerConfig
 from data_exporter import DataExporter, ExportConfig, ExportRequest, ExportFormat
 from node_sync import NodeSynchronizer, NodeSyncConfig, NodeRole
+from phasenet_protocol import PhaseNetNode, PhaseNetConfig
 
 
 class SoundlabServer:
@@ -72,7 +73,10 @@ class SoundlabServer:
                  enable_data_exporter: bool = True,
                  enable_node_sync: bool = False,
                  node_sync_role: str = "master",
-                 node_sync_master_url: Optional[str] = None):
+                 node_sync_master_url: Optional[str] = None,
+                 enable_phasenet: bool = False,
+                 phasenet_port: int = 9000,
+                 phasenet_key: Optional[str] = None):
         """
         Initialize Soundlab server
 
@@ -302,6 +306,14 @@ class SoundlabServer:
                     current_state = self.state_classifier.current_state.value if self.state_classifier else "AWAKE"
                     import time
                     self.predictive_model.add_frame(ici, coherence, criticality, current_state, time.time())
+                # Send to PhaseNet (FR-004)
+                if self.phasenet and self.phasenet.is_running:
+                    phi_phase = self.auto_phi_learner.state.phi_phase
+                    phi_depth = self.auto_phi_learner.state.phi_depth
+                    criticality = getattr(frame, 'criticality', 1.0)
+                    coherence = getattr(frame, 'phase_coherence', 0.0)
+                    ici = getattr(frame, 'ici', 0.0)
+                    self.phasenet.update_phase(phi_phase, phi_depth, criticality, coherence, ici)
 
             self.audio_server.metrics_callback = metrics_callback_with_predictor
 
@@ -392,6 +404,19 @@ class SoundlabServer:
             self.node_sync = NodeSynchronizer(node_sync_config)
         else:
             self.node_sync = None
+
+        # Initialize PhaseNet Protocol (Feature 021)
+        if enable_phasenet:
+            print("\n[Main] Initializing PhaseNet Protocol...")
+            phasenet_config = PhaseNetConfig(
+                bind_port=phasenet_port,
+                network_key=phasenet_key,
+                enable_encryption=phasenet_key is not None,
+                enable_logging=enable_logging
+            )
+            self.phasenet = PhaseNetNode(phasenet_config)
+        else:
+            self.phasenet = None
 
         # Initialize latency streamer (will be created by latency API)
         self.latency_streamer: Optional[LatencyStreamer] = None
@@ -1066,6 +1091,74 @@ class SoundlabServer:
                 "message": "Node synchronizer stopped"
             }
 
+        # PhaseNet Protocol API endpoints (Feature 021)
+        @self.app.post("/api/network/start")
+        async def start_phasenet():
+            """Start PhaseNet node (FR-008)"""
+            if not self.phasenet:
+                return {"ok": False, "message": "PhaseNet not enabled"}
+
+            self.phasenet.start()
+            return {
+                "ok": True,
+                "message": "PhaseNet started",
+                "node_id": self.phasenet.node_id
+            }
+
+        @self.app.post("/api/network/stop")
+        async def stop_phasenet():
+            """Stop PhaseNet node (FR-008)"""
+            if not self.phasenet:
+                return {"ok": False, "message": "PhaseNet not enabled"}
+
+            self.phasenet.stop()
+            return {
+                "ok": True,
+                "message": "PhaseNet stopped"
+            }
+
+        @self.app.get("/api/network/status")
+        async def get_network_status():
+            """Get network status (FR-008)"""
+            if not self.phasenet:
+                return {"ok": False, "message": "PhaseNet not enabled"}
+
+            status = self.phasenet.get_status()
+            return {
+                "ok": True,
+                **status
+            }
+
+        @self.app.get("/api/network/stats")
+        async def get_network_statistics():
+            """Get network statistics (SC-001, SC-002)"""
+            if not self.phasenet:
+                return {"ok": False, "message": "PhaseNet not enabled"}
+
+            stats = self.phasenet.get_statistics()
+            return {
+                "ok": True,
+                **stats
+            }
+
+        @self.app.post("/api/network/update-phase")
+        async def update_network_phase(
+            phi_phase: float,
+            phi_depth: float,
+            criticality: float,
+            coherence: float,
+            ici: float
+        ):
+            """Manually update phase on network (FR-004)"""
+            if not self.phasenet:
+                return {"ok": False, "message": "PhaseNet not enabled"}
+
+            self.phasenet.update_phase(phi_phase, phi_depth, criticality, coherence, ici)
+            return {
+                "ok": True,
+                "message": "Phase updated"
+            }
+
         # Metrics WebSocket endpoint
         @self.app.websocket("/ws/metrics")
         async def websocket_metrics(websocket):
@@ -1525,6 +1618,9 @@ def main():
     parser.add_argument("--enable-node-sync", action="store_true", help="Enable Node Synchronizer (distributed phase-locked operation)")
     parser.add_argument("--node-sync-role", default="master", choices=["master", "client"], help="Node role: master (authority) or client (subscriber)")
     parser.add_argument("--node-sync-master-url", help="Master WebSocket URL for client nodes (e.g., ws://192.168.1.100:8000/ws/sync)")
+    parser.add_argument("--enable-phasenet", action="store_true", help="Enable PhaseNet Protocol (mesh network for distributed sync)")
+    parser.add_argument("--phasenet-port", type=int, default=9000, help="PhaseNet UDP port (default: 9000)")
+    parser.add_argument("--phasenet-key", help="PhaseNet encryption key (enables AES-128 encryption)")
     parser.add_argument("--list-devices", action="store_true", help="List available audio devices and exit")
 
     args = parser.parse_args()
@@ -1556,7 +1652,10 @@ def main():
         enable_data_exporter=not args.disable_data_exporter,
         enable_node_sync=args.enable_node_sync,
         node_sync_role=args.node_sync_role,
-        node_sync_master_url=args.node_sync_master_url
+        node_sync_master_url=args.node_sync_master_url,
+        enable_phasenet=args.enable_phasenet,
+        phasenet_port=args.phasenet_port,
+        phasenet_key=args.phasenet_key
     )
 
     server.run(
