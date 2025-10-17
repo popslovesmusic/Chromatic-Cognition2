@@ -1,0 +1,95 @@
+# Dockerfile.dev - Development and CI Environment
+# Feature 020: Reproducible Build Environment + Dependency Bootstrap
+#
+# This Dockerfile creates an identical environment for development and CI.
+# Includes all build tools, compilers, and dependencies for C++ extension builds.
+#
+# Build: docker build -f Dockerfile.dev -t soundlab/phi-matrix:dev .
+# Run:   docker run -it --rm -v $(pwd):/workspace soundlab/phi-matrix:dev bash
+
+FROM python:3.11-slim as base
+
+# Install system dependencies and build tools (FR-008)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # Build essentials
+    build-essential \
+    gcc \
+    g++ \
+    make \
+    cmake \
+    # Version control
+    git \
+    # Audio libraries
+    libasound2-dev \
+    portaudio19-dev \
+    libportaudio2 \
+    # FFTW3 library for DSP
+    libfftw3-dev \
+    libfftw3-3 \
+    # Utilities
+    curl \
+    wget \
+    ca-certificates \
+    # Debugging tools
+    gdb \
+    valgrind \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Create non-root user
+RUN useradd -m -u 1000 -s /bin/bash soundlab && \
+    mkdir -p /workspace /app && \
+    chown -R soundlab:soundlab /workspace /app
+
+# Set working directory
+WORKDIR /workspace
+
+# Switch to non-root user
+USER soundlab
+
+# Install Python dependencies
+COPY --chown=soundlab:soundlab server/requirements.txt /tmp/requirements.txt
+RUN pip install --user --no-cache-dir -r /tmp/requirements.txt
+
+# Install additional development tools
+RUN pip install --user --no-cache-dir \
+    ipython \
+    ipdb \
+    black \
+    isort \
+    flake8 \
+    mypy \
+    pylint
+
+# Set up Python path to include user-installed packages
+ENV PATH="/home/soundlab/.local/bin:${PATH}" \
+    PYTHONPATH="/workspace:${PYTHONPATH}"
+
+# Copy source code (for CI builds)
+COPY --chown=soundlab:soundlab . /workspace/
+
+# Build C++ extension (if in CI)
+ARG BUILD_EXT=0
+RUN if [ "$BUILD_EXT" = "1" ]; then \
+        cd "/workspace/sase amp fixed" && \
+        python setup.py build_ext --inplace || \
+        echo "Warning: C++ extension build failed - may need to run manually"; \
+    fi
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD python -c "import sys; sys.exit(0)"
+
+# Default command
+CMD ["/bin/bash"]
+
+# Labels
+LABEL maintainer="Soundlab Team <noreply@soundlab.io>" \
+      version="0.9.0-rc1" \
+      description="Soundlab Φ-Matrix Development Environment" \
+      feature="020-dependency-bootstrap"

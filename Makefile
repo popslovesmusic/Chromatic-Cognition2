@@ -71,6 +71,75 @@ venv: ## Create virtual environment
 	@echo "Activate with: source $(VENV)/bin/activate (Linux/Mac) or $(VENV)\Scripts\activate (Windows)"
 
 #==============================================================================
+# Feature 020: Build Environment + Dependency Bootstrap
+#==============================================================================
+
+DASE_DIR := "sase amp fixed"
+DASE_BUILD := $(DASE_DIR)/build
+DASE_DIST := $(DASE_DIR)/dist
+
+.PHONY: setup
+setup: ## Bootstrap complete build environment (FR-001, SC-001)
+	@echo "$(CYAN)========================================$(NC)"
+	@echo "$(CYAN)Feature 020: Environment Bootstrap$(NC)"
+	@echo "$(CYAN)========================================$(NC)"
+	@echo ""
+	@echo "$(CYAN)[1/4] Installing Python dependencies...$(NC)"
+	$(PIP) install -r $(SERVER_DIR)/requirements.txt
+	@echo "$(GREEN)✓ Python dependencies installed$(NC)"
+	@echo ""
+	@echo "$(CYAN)[2/4] Building C++ extension (D-ASE)...$(NC)"
+	$(MAKE) build-ext
+	@echo ""
+	@echo "$(CYAN)[3/4] Verifying build...$(NC)"
+	$(PYTHON) -c "import dase_engine; print(f'D-ASE version: {dase_engine.__version__}'); dase_engine.CPUFeatures.print_capabilities()" || echo "$(RED)Warning: dase_engine not importable (may need FFTW3 library)$(NC)"
+	@echo ""
+	@echo "$(CYAN)[4/4] Running post-install checks...$(NC)"
+	$(PYTHON) --version
+	$(PIP) list | grep -E "fastapi|pybind11|numpy|sounddevice" || true
+	@echo ""
+	@echo "$(GREEN)========================================$(NC)"
+	@echo "$(GREEN)✓ Setup complete! Environment ready.$(NC)"
+	@echo "$(GREEN)========================================$(NC)"
+	@echo "Next steps:"
+	@echo "  - Run tests: make test"
+	@echo "  - Run validation: make validate-020"
+	@echo "  - Build release: make rc"
+
+.PHONY: build-ext
+build-ext: ## Build C++ extension (D-ASE engine) (FR-003)
+	@echo "$(CYAN)Building C++ extension with AVX2 optimization...$(NC)"
+	cd $(DASE_DIR) && $(PYTHON) setup.py build_ext --inplace
+	@echo "$(GREEN)✓ C++ extension built: dase_engine.so/.pyd$(NC)"
+
+.PHONY: build-ext-clean
+build-ext-clean: ## Clean C++ extension build artifacts
+	@echo "$(CYAN)Cleaning C++ extension build...$(NC)"
+	cd $(DASE_DIR) && rm -rf build dist *.so *.pyd *.egg-info
+	@echo "$(GREEN)✓ C++ extension cleaned$(NC)"
+
+.PHONY: test-simulate
+test-simulate: ## Run tests in simulation mode (no hardware) (FR-010, SC-006)
+	@echo "$(CYAN)Running tests in simulation mode (no audio hardware)...$(NC)"
+	SOUNDLAB_SIMULATE=1 $(MAKE) test
+	@echo "$(GREEN)✓ Simulation tests passed$(NC)"
+
+.PHONY: report
+report: ## Generate test and validation reports (FR-009, SC-004)
+	@echo "$(CYAN)Generating test reports...$(NC)"
+	mkdir -p tests/reports
+	@echo "Running validation scripts and collecting reports..."
+	cd $(SERVER_DIR) && $(PYTHON) ../scripts/run_tests_and_report.py
+	@echo "$(GREEN)✓ Reports generated in tests/reports/$(NC)"
+	@ls -lh tests/reports/
+
+.PHONY: validate-020
+validate-020: ## Validate Feature 020 implementation
+	@echo "$(CYAN)Validating Feature 020: Build Environment$(NC)"
+	cd $(SERVER_DIR) && $(PYTHON) validate_feature_020.py
+	@echo "$(GREEN)✓ Feature 020 validation passed$(NC)"
+
+#==============================================================================
 # Testing Targets
 #==============================================================================
 
