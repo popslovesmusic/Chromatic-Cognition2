@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chromatic Consciousness Visualizer - Feature 016</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Monaco', 'Courier New', monospace;
+            background: #000;
+            color: #00ff00;
+            overflow: hidden;
+        }
+
+        #container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #canvas-container {
+            flex: 1;
+            position: relative;
+            background: #000;
+        }
+
+        #mainCanvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        #controls {
+            background: rgba(10, 10, 10, 0.95);
+            border-top: 1px solid #00ff00;
+            padding: 15px;
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .control-group {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        label {
+            color: #00ffff;
+            font-size: 12px;
+        }
+
+        button {
+            background: #1a4d1a;
+            color: #00ff00;
+            border: 1px solid #00ff00;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 11px;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            background: #00ff00;
+            color: #000;
+            box-shadow: 0 0 10px #00ff00;
+        }
+
+        button.active {
+            background: #00ff00;
+            color: #000;
+        }
+
+        select {
+            background: #1a1a1a;
+            color: #00ff00;
+            border: 1px solid #00ff00;
+            padding: 6px;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 11px;
+        }
+
+        #stats {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid #00ff00;
+            padding: 10px;
+            font-size: 11px;
+            min-width: 200px;
+        }
+
+        .stat-line {
+            margin: 3px 0;
+        }
+
+        .stat-label {
+            color: #888;
+        }
+
+        .stat-value {
+            color: #00ffff;
+            float: right;
+        }
+
+        .warning {
+            color: #ff9900;
+        }
+
+        .error {
+            color: #ff4444;
+        }
+
+        #status-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ff4444;
+            display: inline-block;
+            margin-right: 5px;
+        }
+
+        #status-indicator.connected {
+            background: #00ff00;
+            box-shadow: 0 0 10px #00ff00;
+        }
+
+        .mode-info {
+            color: #ffff00;
+            font-size: 11px;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="canvas-container">
+            <canvas id="mainCanvas"></canvas>
+
+            <div id="stats">
+                <div class="stat-line">
+                    <span id="status-indicator"></span>
+                    <span id="connection-status">Disconnected</span>
+                </div>
+                <div class="stat-line">
+                    <span class="stat-label">FPS:</span>
+                    <span class="stat-value" id="fps">0</span>
+                </div>
+                <div class="stat-line">
+                    <span class="stat-label">Frame Time:</span>
+                    <span class="stat-value" id="frame-time">0 ms</span>
+                </div>
+                <div class="stat-line">
+                    <span class="stat-label">ICI:</span>
+                    <span class="stat-value" id="ici">0.000</span>
+                </div>
+                <div class="stat-line">
+                    <span class="stat-label">Coherence:</span>
+                    <span class="stat-value" id="coherence">0.000</span>
+                </div>
+                <div class="stat-line">
+                    <span class="stat-label">Phi Phase:</span>
+                    <span class="stat-value" id="phi-phase">0.00</span>
+                </div>
+                <div class="stat-line">
+                    <span class="stat-label">Phi Depth:</span>
+                    <span class="stat-value" id="phi-depth">0.00</span>
+                </div>
+                <div class="stat-line">
+                    <span class="stat-label">Breathing:</span>
+                    <span class="stat-value" id="phi-breathing">0.00</span>
+                </div>
+            </div>
+        </div>
+
+        <div id="controls">
+            <div class="control-group">
+                <label>Mode:</label>
+                <button id="mode-spectral" class="active" onclick="setMode('spectral')">Spectral Grid</button>
+                <button id="mode-breathing" onclick="setMode('breathing')">Phi-Breathing</button>
+                <button id="mode-topology" onclick="setMode('topology')">Topology</button>
+            </div>
+
+            <div class="control-group">
+                <label>Overlay:</label>
+                <button id="toggle-coupling" onclick="toggleCoupling()">Coupling Links</button>
+                <button id="toggle-symmetry" onclick="toggleSymmetry()">Symmetry Ring</button>
+            </div>
+
+            <div class="control-group">
+                <label>Quality:</label>
+                <select id="quality" onchange="updateQuality()">
+                    <option value="low">Low (30 fps)</option>
+                    <option value="medium">Medium (45 fps)</option>
+                    <option value="high" selected>High (60 fps)</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <span class="mode-info" id="mode-info">Spectral Grid Mode - Frequency to Color</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global state
+        const canvas = document.getElementById('mainCanvas');
+        const ctx = canvas.getContext('2d');
+        let ws = null;
+        let connected = false;
+        let currentMode = 'spectral';
+        let showCoupling = false;
+        let showSymmetry = false;
+        let targetFps = 60;
+
+        // Metrics data
+        let metricsData = null;
+        let channelData = Array(8).fill(null).map((_, i) => ({
+            frequency: 100 + i * 100,
+            amplitude: 0.5,
+            hue: 0,
+            saturation: 1.0,
+            lightness: 0.5
+        }));
+
+        // Golden angle constant
+        const GOLDEN_ANGLE = 137.5077640500378;
+
+        // Performance tracking
+        let frameCount = 0;
+        let lastFpsUpdate = Date.now();
+        let fps = 0;
+        let lastFrameTime = Date.now();
+
+        // Initialize
+        function init() {
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            connectWebSocket();
+            startRenderLoop();
+        }
+
+        // Resize canvas to fill container
+        function resizeCanvas() {
+            const container = document.getElementById('canvas-container');
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+        }
+
+        // Connect to metrics WebSocket
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/metrics`;
+
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                connected = true;
+                document.getElementById('connection-status').textContent = 'Connected';
+                document.getElementById('status-indicator').classList.add('connected');
+                console.log('WebSocket connected');
+            };
+
+            ws.onclose = () => {
+                connected = false;
+                document.getElementById('connection-status').textContent = 'Disconnected';
+                document.getElementById('status-indicator').classList.remove('connected');
+                console.log('WebSocket disconnected, reconnecting...');
+                setTimeout(connectWebSocket, 2000);
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    metricsData = JSON.parse(event.data);
+                    updateMetricsDisplay(metricsData);
+                    updateChannelData(metricsData);
+                } catch (error) {
+                    console.error('Error parsing metrics:', error);
+                }
+            };
+        }
+
+        // Update metrics display
+        function updateMetricsDisplay(data) {
+            document.getElementById('ici').textContent = (data.ici || 0).toFixed(3);
+            document.getElementById('coherence').textContent = (data.phase_coherence || 0).toFixed(3);
+            document.getElementById('phi-phase').textContent = ((data.phi_phase || 0) % (2 * Math.PI)).toFixed(2);
+            document.getElementById('phi-depth').textContent = (data.phi_depth || 1.0).toFixed(2);
+        }
+
+        // Update channel chromatic data from metrics
+        function updateChannelData(data) {
+            // Extract spectral data if available
+            const spectral = data.spectral_analysis || {};
+            const centroids = spectral.channel_centroids || [];
+            const amplitudes = spectral.channel_rms || [];
+
+            const phiPhase = data.phi_phase || 0;
+            const phiDepth = data.phi_depth || 1.0;
+
+            // Update breathing cycle
+            const breathing = computeBreathingCycle(phiDepth);
+            document.getElementById('phi-breathing').textContent = breathing.toFixed(2);
+
+            for (let i = 0; i < 8; i++) {
+                // Use actual spectral centroid if available, otherwise use default
+                const frequency = centroids[i] || (100 + i * 100);
+                const amplitude = amplitudes[i] || 0.5;
+
+                // Map frequency to hue (logarithmic scale)
+                const hue = frequencyToHue(frequency);
+
+                // Apply Phi rotation (FR-002)
+                const rotatedHue = applyPhiRotation(hue, phiPhase);
+
+                // Map amplitude to lightness
+                const lightness = amplitudeToLightness(amplitude);
+
+                // Modulate by breathing
+                const modulatedLightness = lightness * (0.5 + 0.5 * breathing);
+
+                channelData[i] = {
+                    frequency,
+                    amplitude,
+                    hue: rotatedHue,
+                    saturation: 1.0,
+                    lightness: modulatedLightness
+                };
+            }
+        }
+
+        // Frequency to hue mapping (FR-001)
+        function frequencyToHue(frequency) {
+            const minFreq = 20;
+            const maxFreq = 2000;
+            const freq = Math.max(minFreq, Math.min(maxFreq, frequency));
+
+            // Logarithmic mapping
+            const logFreq = Math.log10(freq);
+            const logMin = Math.log10(minFreq);
+            const logMax = Math.log10(maxFreq);
+            const normalized = (logFreq - logMin) / (logMax - logMin);
+
+            return normalized * 360;
+        }
+
+        // Amplitude to lightness mapping (FR-001)
+        function amplitudeToLightness(amplitude) {
+            const gamma = 2.2;
+            const clamped = Math.max(0, Math.min(1, amplitude));
+            return Math.pow(clamped, 1.0 / gamma);
+        }
+
+        // Apply Phi rotation (FR-002)
+        function applyPhiRotation(baseHue, phiPhase) {
+            const rotation = (phiPhase / (2 * Math.PI)) * GOLDEN_ANGLE;
+            return (baseHue + rotation) % 360;
+        }
+
+        // Compute breathing cycle (User Story 2)
+        function computeBreathingCycle(phiDepth) {
+            const freq = 1.5; // Hz
+            const elapsed = (Date.now() - lastFpsUpdate) / 1000;
+            const breathing = 0.5 + 0.5 * Math.sin(2 * Math.PI * freq * elapsed);
+
+            // Modulate by Phi depth
+            const depthFactor = (phiDepth - 0.618) / (1.618 - 0.618);
+            return 0.5 + (breathing - 0.5) * depthFactor;
+        }
+
+        // HSL to RGB conversion
+        function hslToRgb(h, s, l) {
+            h = h / 360;
+            const c = (1 - Math.abs(2 * l - 1)) * s;
+            const x = c * (1 - Math.abs((h * 6) % 2 - 1));
+            const m = l - c / 2;
+
+            let r, g, b;
+            if (h < 1/6) {
+                [r, g, b] = [c, x, 0];
+            } else if (h < 2/6) {
+                [r, g, b] = [x, c, 0];
+            } else if (h < 3/6) {
+                [r, g, b] = [0, c, x];
+            } else if (h < 4/6) {
+                [r, g, b] = [0, x, c];
+            } else if (h < 5/6) {
+                [r, g, b] = [x, 0, c];
+            } else {
+                [r, g, b] = [c, 0, x];
+            }
+
+            return [
+                Math.round((r + m) * 255),
+                Math.round((g + m) * 255),
+                Math.round((b + m) * 255)
+            ];
+        }
+
+        // Render loop
+        function startRenderLoop() {
+            function render() {
+                const now = Date.now();
+                const frameTime = now - lastFrameTime;
+                lastFrameTime = now;
+
+                // Update FPS
+                frameCount++;
+                if (now - lastFpsUpdate >= 1000) {
+                    fps = frameCount;
+                    frameCount = 0;
+                    lastFpsUpdate = now;
+                    document.getElementById('fps').textContent = fps;
+                    document.getElementById('frame-time').textContent = frameTime.toFixed(1) + ' ms';
+                }
+
+                // Clear canvas
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                // Render based on mode
+                switch (currentMode) {
+                    case 'spectral':
+                        renderSpectralGrid();
+                        break;
+                    case 'breathing':
+                        renderPhiBreathing();
+                        break;
+                    case 'topology':
+                        renderTopology();
+                        break;
+                }
+
+                // Render overlays
+                if (showCoupling) {
+                    renderCouplingLinks();
+                }
+                if (showSymmetry) {
+                    renderSymmetryRing();
+                }
+
+                // Continue loop
+                setTimeout(() => requestAnimationFrame(render), 1000 / targetFps);
+            }
+
+            requestAnimationFrame(render);
+        }
+
+        // Render spectral grid mode (User Story 1)
+        function renderSpectralGrid() {
+            const cols = 4;
+            const rows = 2;
+            const cellWidth = canvas.width / cols;
+            const cellHeight = canvas.height / rows;
+
+            for (let i = 0; i < 8; i++) {
+                const col = i % cols;
+                const row = Math.floor(i / cols);
+                const x = col * cellWidth;
+                const y = row * cellHeight;
+
+                const channel = channelData[i];
+                const [r, g, b] = hslToRgb(channel.hue, channel.saturation, channel.lightness);
+
+                // Fill cell with color
+                ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+                ctx.fillRect(x + 2, y + 2, cellWidth - 4, cellHeight - 4);
+
+                // Draw border
+                ctx.strokeStyle = '#333';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(x, y, cellWidth, cellHeight);
+
+                // Draw channel info
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 16px Monaco';
+                ctx.fillText(`Ch ${i}`, x + 10, y + 30);
+
+                ctx.font = '12px Monaco';
+                ctx.fillText(`${channel.frequency.toFixed(0)} Hz`, x + 10, y + 50);
+                ctx.fillText(`H: ${channel.hue.toFixed(0)}°`, x + 10, y + 70);
+                ctx.fillText(`L: ${(channel.lightness * 100).toFixed(0)}%`, x + 10, y + 90);
+            }
+        }
+
+        // Render Phi-breathing mode (User Story 2)
+        function renderPhiBreathing() {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const baseRadius = Math.min(canvas.width, canvas.height) * 0.35;
+
+            // Compute global breathing
+            const breathing = parseFloat(document.getElementById('phi-breathing').textContent) || 0.5;
+            const globalLightness = breathing;
+
+            // Draw breathing background
+            const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, baseRadius);
+
+            for (let i = 0; i < 8; i++) {
+                const channel = channelData[i];
+                const [r, g, b] = hslToRgb(channel.hue, channel.saturation, globalLightness);
+                gradient.addColorStop(i / 8, `rgba(${r}, ${g}, ${b}, 0.5)`);
+            }
+
+            ctx.fillStyle = gradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw pulsing circles for each channel
+            for (let i = 0; i < 8; i++) {
+                const angle = (i / 8) * 2 * Math.PI - Math.PI / 2;
+                const radius = baseRadius * 0.7;
+                const x = centerX + Math.cos(angle) * radius;
+                const y = centerY + Math.sin(angle) * radius;
+
+                const channel = channelData[i];
+                const size = 40 + 40 * channel.amplitude * breathing;
+
+                const [r, g, b] = hslToRgb(channel.hue, channel.saturation, channel.lightness);
+
+                // Draw glow
+                const glowGradient = ctx.createRadialGradient(x, y, 0, x, y, size);
+                glowGradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, 0.8)`);
+                glowGradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, 0)`);
+
+                ctx.fillStyle = glowGradient;
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, 2 * Math.PI);
+                ctx.fill();
+
+                // Draw core
+                ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+                ctx.beginPath();
+                ctx.arc(x, y, size * 0.5, 0, 2 * Math.PI);
+                ctx.fill();
+            }
+        }
+
+        // Render topology mode (User Story 3)
+        function renderTopology() {
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = Math.min(canvas.width, canvas.height) * 0.35;
+
+            // Draw channels in circle
+            for (let i = 0; i < 8; i++) {
+                const angle = (i / 8) * 2 * Math.PI - Math.PI / 2;
+                const x = centerX + Math.cos(angle) * radius;
+                const y = centerY + Math.sin(angle) * radius;
+
+                const channel = channelData[i];
+                const [r, g, b] = hslToRgb(channel.hue, channel.saturation, channel.lightness);
+
+                // Draw node
+                ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
+                ctx.beginPath();
+                ctx.arc(x, y, 30, 0, 2 * Math.PI);
+                ctx.fill();
+
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Label
+                ctx.fillStyle = '#fff';
+                ctx.font = 'bold 14px Monaco';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(i.toString(), x, y);
+            }
+        }
+
+        // Render coupling links overlay (FR-004)
+        function renderCouplingLinks() {
+            const coherence = parseFloat(document.getElementById('coherence').textContent) || 0;
+            if (coherence < 0.3) return; // Don't show if coherence too low
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = Math.min(canvas.width, canvas.height) * 0.35;
+
+            // Draw random coupling links (would use real coupling matrix from backend)
+            for (let i = 0; i < 8; i++) {
+                for (let j = i + 1; j < 8; j++) {
+                    const coupling = Math.random();
+                    if (coupling > 0.5) {
+                        const angle1 = (i / 8) * 2 * Math.PI - Math.PI / 2;
+                        const angle2 = (j / 8) * 2 * Math.PI - Math.PI / 2;
+                        const x1 = centerX + Math.cos(angle1) * radius;
+                        const y1 = centerY + Math.sin(angle1) * radius;
+                        const x2 = centerX + Math.cos(angle2) * radius;
+                        const y2 = centerY + Math.sin(angle2) * radius;
+
+                        const strength = coupling * coherence;
+                        const alpha = Math.min(strength, 1.0);
+
+                        ctx.strokeStyle = `rgba(0, 255, 255, ${alpha})`;
+                        ctx.lineWidth = coupling * 3;
+                        ctx.beginPath();
+                        ctx.moveTo(x1, y1);
+                        ctx.lineTo(x2, y2);
+                        ctx.stroke();
+                    }
+                }
+            }
+        }
+
+        // Render symmetry ring overlay (User Story 3)
+        function renderSymmetryRing() {
+            const ici = parseFloat(document.getElementById('ici').textContent) || 0.5;
+            const symmetryScore = 1.0 - 2.0 * Math.abs(ici - 0.5);
+
+            if (symmetryScore < 0.5) return;
+
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = Math.min(canvas.width, canvas.height) * 0.4;
+
+            ctx.strokeStyle = `rgba(255, 255, 0, ${symmetryScore})`;
+            ctx.lineWidth = 3;
+            ctx.setLineDash([10, 5]);
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Draw symmetry score
+            ctx.fillStyle = `rgba(255, 255, 0, ${symmetryScore})`;
+            ctx.font = '12px Monaco';
+            ctx.textAlign = 'center';
+            ctx.fillText(`Symmetry: ${(symmetryScore * 100).toFixed(0)}%`, centerX, centerY - radius - 20);
+        }
+
+        // Mode switching
+        function setMode(mode) {
+            currentMode = mode;
+
+            document.getElementById('mode-spectral').classList.remove('active');
+            document.getElementById('mode-breathing').classList.remove('active');
+            document.getElementById('mode-topology').classList.remove('active');
+            document.getElementById(`mode-${mode}`).classList.add('active');
+
+            const modeInfo = {
+                'spectral': 'Spectral Grid Mode - Frequency to Color',
+                'breathing': 'Phi-Breathing Mode - Rhythmic Luminance Pulse',
+                'topology': 'Topology Mode - Phase Coupling Geometry'
+            };
+
+            document.getElementById('mode-info').textContent = modeInfo[mode];
+        }
+
+        // Toggle coupling overlay
+        function toggleCoupling() {
+            showCoupling = !showCoupling;
+            document.getElementById('toggle-coupling').classList.toggle('active', showCoupling);
+        }
+
+        // Toggle symmetry overlay
+        function toggleSymmetry() {
+            showSymmetry = !showSymmetry;
+            document.getElementById('toggle-symmetry').classList.toggle('active', showSymmetry);
+        }
+
+        // Update quality
+        function updateQuality() {
+            const quality = document.getElementById('quality').value;
+            targetFps = quality === 'high' ? 60 : quality === 'medium' ? 45 : 30;
+        }
+
+        // Start
+        window.onload = init;
+    </script>
+</body>
+</html>

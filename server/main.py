@@ -47,6 +47,7 @@ from hybrid_bridge import HybridBridge
 from hybrid_node import HybridNode, HybridNodeConfig, PhiSource, HybridMetrics
 from session_comparator import SessionComparator, SessionStats, ComparisonResult
 from correlation_analyzer import CorrelationAnalyzer, CorrelationMatrix
+from chromatic_visualizer import ChromaticVisualizer, VisualizerConfig
 
 
 class SoundlabServer:
@@ -330,6 +331,30 @@ class SoundlabServer:
                     coherence = getattr(frame, 'phase_coherence', 0.0)
                     ici = getattr(frame, 'ici', 0.0)
                     self.phasenet.update_phase(phi_phase, phi_depth, criticality, coherence, ici)
+                # Send to Chromatic Visualizer (Feature 016)
+                if self.chromatic_visualizer:
+                    # Extract channel spectral data
+                    spectral = getattr(frame, 'spectral_analysis', {})
+                    channel_centroids = spectral.get('channel_centroids', [100, 200, 300, 400, 500, 600, 700, 800])
+                    channel_rms = spectral.get('channel_rms', [0.5] * 8)
+
+                    # Get Phi and metrics
+                    phi_phase = self.auto_phi_learner.state.phi_phase
+                    phi_depth = self.auto_phi_learner.state.phi_depth
+                    ici = getattr(frame, 'ici', 0.5)
+                    coherence = getattr(frame, 'phase_coherence', 0.5)
+                    criticality = getattr(frame, 'criticality', 1.0)
+
+                    # Update chromatic state
+                    self.chromatic_visualizer.update_state(
+                        channel_frequencies=channel_centroids[:8],
+                        channel_amplitudes=channel_rms[:8],
+                        phi_phase=phi_phase,
+                        phi_depth=phi_depth,
+                        ici=ici,
+                        coherence=coherence,
+                        criticality=criticality
+                    )
 
             self.audio_server.metrics_callback = metrics_callback_with_predictor
 
@@ -512,6 +537,15 @@ class SoundlabServer:
         print("\n[Main] Initializing Multi-Session Analytics...")
         self.session_comparator = SessionComparator()
         self.correlation_analyzer = CorrelationAnalyzer()
+
+        # Initialize Chromatic Visualizer (Feature 016)
+        print("\n[Main] Initializing Chromatic Consciousness Visualizer...")
+        visualizer_config = VisualizerConfig(
+            num_channels=8,
+            target_fps=60,
+            enable_logging=enable_logging
+        )
+        self.chromatic_visualizer = ChromaticVisualizer(visualizer_config)
 
         # Initialize latency streamer (will be created by latency API)
         self.latency_streamer: Optional[LatencyStreamer] = None
@@ -2338,6 +2372,135 @@ class SoundlabServer:
                 "ok": True,
                 "summary": summary,
                 "pair_count": len(summary)
+            }
+
+        # Chromatic Visualizer API endpoints (Feature 016)
+        @self.app.get("/api/chromatic/state")
+        async def get_chromatic_state():
+            """
+            Get current chromatic visualization state (FR-001, FR-002)
+
+            Returns:
+                Current chromatic state with channel colors and Phi modulation
+            """
+            state = self.chromatic_visualizer.get_current_state()
+
+            if state:
+                return {
+                    "ok": True,
+                    **state
+                }
+            else:
+                return {
+                    "ok": False,
+                    "message": "No chromatic state available"
+                }
+
+        @self.app.get("/api/chromatic/performance")
+        async def get_chromatic_performance():
+            """
+            Get chromatic visualizer performance stats (SC-003, SC-005)
+
+            Returns:
+                Performance statistics including FPS and frame time
+            """
+            stats = self.chromatic_visualizer.get_performance_stats()
+
+            return {
+                "ok": True,
+                **stats
+            }
+
+        @self.app.get("/api/chromatic/config")
+        async def get_chromatic_config():
+            """
+            Get current visualizer configuration
+
+            Returns:
+                Current configuration settings
+            """
+            config = self.chromatic_visualizer.config
+
+            return {
+                "ok": True,
+                "config": {
+                    "num_channels": config.num_channels,
+                    "min_frequency": config.min_frequency,
+                    "max_frequency": config.max_frequency,
+                    "frequency_scale": config.frequency_scale,
+                    "phi_rotation_enabled": config.phi_rotation_enabled,
+                    "phi_breathing_enabled": config.phi_breathing_enabled,
+                    "phi_breathing_frequency": config.phi_breathing_frequency,
+                    "target_fps": config.target_fps
+                }
+            }
+
+        @self.app.post("/api/chromatic/config/phi-rotation")
+        async def set_phi_rotation(enabled: bool):
+            """
+            Enable or disable Phi golden angle rotation (FR-002)
+
+            Args:
+                enabled: Whether to enable Phi rotation
+
+            Returns:
+                Success status
+            """
+            self.chromatic_visualizer.config.phi_rotation_enabled = enabled
+
+            return {
+                "ok": True,
+                "message": f"Phi rotation {'enabled' if enabled else 'disabled'}",
+                "phi_rotation_enabled": enabled
+            }
+
+        @self.app.post("/api/chromatic/config/phi-breathing")
+        async def set_phi_breathing(enabled: bool, frequency: Optional[float] = None):
+            """
+            Enable or disable Phi-breathing visualization (User Story 2, FR-002)
+
+            Args:
+                enabled: Whether to enable Phi breathing
+                frequency: Optional breathing frequency in Hz (1-2 Hz typical)
+
+            Returns:
+                Success status
+            """
+            self.chromatic_visualizer.config.phi_breathing_enabled = enabled
+
+            if frequency is not None:
+                self.chromatic_visualizer.config.phi_breathing_frequency = frequency
+
+            return {
+                "ok": True,
+                "message": f"Phi breathing {'enabled' if enabled else 'disabled'}",
+                "phi_breathing_enabled": enabled,
+                "phi_breathing_frequency": self.chromatic_visualizer.config.phi_breathing_frequency
+            }
+
+        @self.app.post("/api/chromatic/config/frequency-scale")
+        async def set_frequency_scale(scale: str):
+            """
+            Set frequency to hue mapping scale (FR-001)
+
+            Args:
+                scale: "linear" or "log"
+
+            Returns:
+                Success status
+            """
+            if scale not in ["linear", "log"]:
+                return {
+                    "ok": False,
+                    "message": "Invalid scale. Must be 'linear' or 'log'"
+                }
+
+            self.chromatic_visualizer.config.frequency_scale = scale
+
+            return {
+                "ok": True,
+                "message": f"Frequency scale set to {scale}",
+                "frequency_scale": scale
             }
 
         # Metrics WebSocket endpoint
