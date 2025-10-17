@@ -1,0 +1,38 @@
+{
+  "description": "Golden data regression tolerances for Φ-Matrix metrics",
+  "version": "1.0.0",
+  "metrics": {
+    "ICI": {
+      "tolerance": 0.03,
+      "description": "Inter-Criticality Interval tolerance"
+    },
+    "coherence": {
+      "tolerance": 0.04,
+      "description": "Coherence metric tolerance"
+    },
+    "criticality": {
+      "tolerance": 0.05,
+      "description": "Criticality balance tolerance"
+    },
+    "phi_depth": {
+      "tolerance": 0.02,
+      "description": "Φ depth tolerance"
+    },
+    "phi_phase": {
+      "tolerance": 0.1,
+      "description": "Φ phase tolerance (radians)"
+    },
+    "fps": {
+      "tolerance": 5.0,
+      "description": "FPS tolerance (Hz)"
+    },
+    "latency_ms": {
+      "tolerance": 10.0,
+      "description": "Latency tolerance (milliseconds)"
+    }
+  },
+  "global": {
+    "relative_tolerance": 0.05,
+    "description": "Default relative tolerance (5%) for unlisted metrics"
+  }
+}

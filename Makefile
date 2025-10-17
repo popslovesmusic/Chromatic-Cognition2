@@ -179,6 +179,52 @@ validate: ## Run all validation scripts
 	@echo "$(GREEN)✓ All validations passed$(NC)"
 
 #==============================================================================
+# Feature 021: Automated Validation & Regression Testing
+#==============================================================================
+
+.PHONY: test-fast
+test-fast: ## Run unit tests only (fast) (FR-008)
+	@echo "$(CYAN)Running unit tests (fast)...$(NC)"
+	$(PYTEST) -m unit tests/
+	@echo "$(GREEN)✓ Unit tests passed$(NC)"
+
+.PHONY: test-perf
+test-perf: ## Run performance tests with budget enforcement (FR-005, FR-008)
+	@echo "$(CYAN)Running performance benchmark...$(NC)"
+	$(PYTHON) tests/perf/bench_phi_matrix.py --duration 60
+	@echo "$(GREEN)✓ Performance tests passed$(NC)"
+
+.PHONY: test-golden
+test-golden: ## Run golden data regression tests (FR-006)
+	@echo "$(CYAN)Running golden data regression tests...$(NC)"
+	$(PYTEST) -m golden tests/
+	@echo "$(GREEN)✓ Golden data tests passed$(NC)"
+
+.PHONY: test-all
+test-all: ## Run all test suites (unit, integration, perf) (SC-001)
+	@echo "$(CYAN)Running complete test suite...$(NC)"
+	$(PYTEST) -m "not e2e" tests/
+	@echo "$(GREEN)✓ All tests passed$(NC)"
+
+.PHONY: approve-baseline
+approve-baseline: ## Approve current metrics as new baseline (FR-006, FR-008)
+	@echo "$(CYAN)Approving performance baseline...$(NC)"
+	@if [ -f "tests/reports/perf_summary.json" ]; then \
+		mkdir -p tests/golden; \
+		cp tests/reports/perf_summary.json tests/golden/baseline_perf.json; \
+		echo "$(GREEN)✓ Baseline approved and saved$(NC)"; \
+	else \
+		echo "$(RED)Error: No perf_summary.json found. Run 'make test-perf' first.$(NC)"; \
+		exit 1; \
+	fi
+
+.PHONY: validate-021
+validate-021: ## Validate Feature 021 implementation
+	@echo "$(CYAN)Validating Feature 021: Test Automation$(NC)"
+	cd $(SERVER_DIR) && $(PYTHON) validate_feature_021.py
+	@echo "$(GREEN)✓ Feature 021 validation passed$(NC)"
+
+#==============================================================================
 # Code Quality Targets
 #==============================================================================
 
