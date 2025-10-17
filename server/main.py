@@ -669,6 +669,128 @@ class SoundlabServer:
                     "audio_running": self.audio_server.is_running
                 }
 
+        # Health check endpoints (Feature 019: FR-003)
+        @self.app.get("/healthz")
+        async def healthz():
+            """
+            Health check endpoint - basic liveness check
+
+            Returns 200 if server is alive and responding
+            """
+            return {
+                "status": "healthy",
+                "service": "soundlab-phi-matrix",
+                "version": getattr(self, 'version', '0.9.0-rc1')
+            }
+
+        @self.app.get("/readyz")
+        async def readyz():
+            """
+            Readiness check endpoint - checks if server is ready to serve traffic
+
+            Returns:
+                200 if ready, 503 if not ready
+            """
+            import psutil
+
+            # Check critical components
+            checks = {
+                "audio_server": self.audio_server is not None,
+                "metrics_streamer": self.metrics_streamer is not None,
+                "state_sync_manager": hasattr(self, 'state_sync_manager') and self.state_sync_manager is not None,
+                "adaptive_enabled": hasattr(self.auto_phi_learner, 'enabled'),
+                "cpu_available": psutil.cpu_percent() < 95,
+                "memory_available": psutil.virtual_memory().percent < 95
+            }
+
+            ready = all(checks.values())
+
+            if not ready:
+                from fastapi import Response
+                return Response(
+                    content=json.dumps({
+                        "status": "not_ready",
+                        "checks": checks
+                    }),
+                    status_code=503,
+                    media_type="application/json"
+                )
+
+            return {
+                "status": "ready",
+                "checks": checks
+            }
+
+        @self.app.get("/metrics")
+        async def prometheus_metrics():
+            """
+            Prometheus-compatible metrics endpoint
+
+            Returns metrics in Prometheus text format
+            """
+            import time
+
+            metrics = []
+
+            # Audio server metrics
+            if self.audio_server:
+                metrics.append(f'soundlab_audio_running {{}} {1 if self.audio_server.is_running else 0}')
+                metrics.append(f'soundlab_callback_count {{}} {self.audio_server.callback_count}')
+                metrics.append(f'soundlab_sample_rate {{}} {self.audio_server.SAMPLE_RATE}')
+                metrics.append(f'soundlab_buffer_size {{}} {self.audio_server.BUFFER_SIZE}')
+
+            # Client connections
+            metrics.append(f'soundlab_metrics_clients {{}} {len(self.metrics_streamer.clients)}')
+            if self.latency_streamer:
+                metrics.append(f'soundlab_latency_clients {{}} {len(self.latency_streamer.clients)}')
+
+            # State sync metrics
+            if hasattr(self, 'state_sync_manager') and self.state_sync_manager:
+                metrics.append(f'soundlab_websocket_clients {{}} {len(self.state_sync_manager.ws_clients)}')
+
+                # Latency stats
+                latency_stats = self.state_sync_manager.get_latency_stats()
+                metrics.append(f'soundlab_websocket_latency_avg_ms {{}} {latency_stats.get("avg_latency_ms", 0)}')
+                metrics.append(f'soundlab_websocket_latency_max_ms {{}} {latency_stats.get("max_latency_ms", 0)}')
+
+            # System metrics
+            import psutil
+            metrics.append(f'soundlab_cpu_percent {{}} {psutil.cpu_percent()}')
+            metrics.append(f'soundlab_memory_percent {{}} {psutil.virtual_memory().percent}')
+
+            # Phi metrics
+            if self.auto_phi_learner:
+                metrics.append(f'soundlab_phi_depth {{}} {self.auto_phi_learner.state.phi_depth}')
+                metrics.append(f'soundlab_phi_phase {{}} {self.auto_phi_learner.state.phi_phase}')
+
+            return Response(content='\n'.join(metrics) + '\n', media_type='text/plain')
+
+        @self.app.get("/version")
+        async def version():
+            """
+            Version information endpoint
+
+            Returns version, commit, and build information
+            """
+            import os
+            from pathlib import Path
+
+            version_file = Path(__file__).parent.parent / "version.txt"
+            version_info = {
+                "version": getattr(self, 'version', '0.9.0-rc1'),
+                "commit": "unknown",
+                "build_date": "unknown"
+            }
+
+            if version_file.exists():
+                with open(version_file, 'r') as f:
+                    for line in f:
+                        if '=' in line:
+                            key, value = line.strip().split('=', 1)
+                            version_info[key.lower()] = value
+
+            return version_info
+
         @self.app.get("/api/status")
         async def get_status():
             """Get server status"""

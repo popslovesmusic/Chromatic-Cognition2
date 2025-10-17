@@ -1,0 +1,73 @@
+# Soundlab Φ-Matrix - Staging Environment
+# Feature 019: Release Readiness Validation
+
+version: '3.8'
+
+services:
+  # Main application
+  soundlab:
+    image: soundlab/phi-matrix:${VERSION:-0.9.0-rc1}
+    container_name: soundlab-phi-matrix
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: ${VERSION:-0.9.0-rc1}
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+        BUILD_DATE: ${BUILD_DATE:-unknown}
+    ports:
+      - "8000:8000"
+    environment:
+      - SOUNDLAB_ENV=staging
+      - SOUNDLAB_LOG_LEVEL=info
+      - SOUNDLAB_ENABLE_CORS=true
+      - SOUNDLAB_MAX_CONNECTIONS=100
+    volumes:
+      - ./logs:/app/logs
+      - ./server/config:/app/server/config
+      - ./server/presets:/app/server/presets
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/healthz', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - soundlab-network
+    labels:
+      - "com.soundlab.service=phi-matrix"
+      - "com.soundlab.environment=staging"
+      - "com.soundlab.version=${VERSION:-0.9.0-rc1}"
+
+  # Reverse proxy (optional - for TLS and advanced routing)
+  nginx:
+    image: nginx:alpine
+    container_name: soundlab-nginx
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - soundlab
+    restart: unless-stopped
+    networks:
+      - soundlab-network
+    labels:
+      - "com.soundlab.service=nginx"
+      - "com.soundlab.environment=staging"
+    profiles:
+      - with-nginx
+
+networks:
+  soundlab-network:
+    driver: bridge
+    name: soundlab-network
+
+volumes:
+  logs:
+    name: soundlab-logs
+  config:
+    name: soundlab-config

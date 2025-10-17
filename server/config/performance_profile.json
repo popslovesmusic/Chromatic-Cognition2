@@ -1,0 +1,9 @@
+{
+  "target_fps": 45,
+  "audio_buffer_ms": 10,
+  "visual_complexity_level": 5,
+  "enable_phi_breathing": true,
+  "enable_topology_links": true,
+  "enable_gradients": true,
+  "render_resolution": 1.0
+}
