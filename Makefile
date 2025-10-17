@@ -225,6 +225,35 @@ validate-021: ## Validate Feature 021 implementation
 	@echo "$(GREEN)✓ Feature 021 validation passed$(NC)"
 
 #==============================================================================
+# Feature 023: Hardware Validation
+#==============================================================================
+
+.PHONY: hardware-test
+hardware-test: ## Run hardware validation tests (FR-005)
+	@echo "$(CYAN)Running hardware validation tests...$(NC)"
+	$(PYTEST) tests/hardware/test_i2s_phi.py -v --asyncio-mode=auto
+	@echo "$(GREEN)✓ Hardware tests passed$(NC)"
+
+.PHONY: calibrate-sensors
+calibrate-sensors: ## Calibrate Φ-sensors (FR-007, SC-005)
+	@echo "$(CYAN)Calibrating Φ-sensors...$(NC)"
+	cd $(SERVER_DIR) && $(PYTHON) calibrate_sensors.py --duration 10000
+	@echo "$(GREEN)✓ Sensor calibration complete$(NC)"
+
+.PHONY: log-hardware
+log-hardware: ## Log hardware metrics to CSV (FR-010)
+	@echo "$(CYAN)Logging hardware metrics...$(NC)"
+	@mkdir -p logs
+	cd $(SERVER_DIR) && $(PYTHON) -c "from sensor_manager import SensorManager; import asyncio; m = SensorManager({'simulation_mode': True}); asyncio.run(m.start()); asyncio.get_event_loop().run_until_complete(asyncio.sleep(60)); asyncio.run(m.stop())"
+	@echo "$(GREEN)✓ Hardware metrics logged to logs/hardware_phi_metrics.csv$(NC)"
+
+.PHONY: validate-023
+validate-023: ## Validate Feature 023 implementation
+	@echo "$(CYAN)Validating Feature 023: Hardware Validation$(NC)"
+	cd $(SERVER_DIR) && $(PYTHON) validate_feature_023.py
+	@echo "$(GREEN)✓ Feature 023 validation passed$(NC)"
+
+#==============================================================================
 # Code Quality Targets
 #==============================================================================
 
