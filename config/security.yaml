@@ -1,0 +1,189 @@
+# Security Configuration - Feature 024
+# JWT authentication, CORS, CSP, rate limiting, and WebSocket security
+
+# JWT Configuration (FR-001)
+jwt:
+  algorithm: RS256  # or EdDSA
+  public_key_path: config/keys/jwt_public.pem
+  audience: soundlab-api
+  max_age: 900  # 15 minutes in seconds
+  clock_skew: 60  # ±60 seconds tolerance
+
+  # Key rotation
+  rotation_interval_days: 90
+  key_rotation_runbook: docs/key_rotation.md
+
+# CORS Configuration (FR-002)
+cors:
+  allowed_origins:
+    - http://localhost:3000
+    - http://localhost:8080
+    - https://soundlab.example.com
+
+  allow_credentials: true
+  allowed_methods:
+    - GET
+    - POST
+    - PUT
+    - PATCH
+    - DELETE
+    - OPTIONS
+
+  allowed_headers:
+    - Authorization
+    - Content-Type
+    - X-CSRF-Token
+    - X-Request-ID
+
+  max_age: 3600
+
+# WebSocket Security (FR-002)
+websocket:
+  allowed_origins:
+    - http://localhost:3000
+    - http://localhost:8080
+    - https://soundlab.example.com
+
+  allowed_protocols:
+    - soundlab-v1
+
+  require_auth: true
+  max_connections_per_ip: 10
+  handshake_timeout_seconds: 30
+
+# Content Security Policy (FR-004)
+csp:
+  default-src: "'self'"
+  script-src: "'self' 'sha256-abc123...'"
+  style-src: "'self' 'unsafe-inline'"  # Consider removing unsafe-inline
+  img-src: "'self' data: https:"
+  connect-src: "'self' wss:"
+  font-src: "'self'"
+  object-src: "'none'"
+  frame-ancestors: "'none'"
+  base-uri: "'self'"
+  form-action: "'self'"
+  upgrade-insecure-requests: true
+
+# Security Headers (FR-003, FR-005)
+headers:
+  # HSTS (FR-003)
+  strict-transport-security: "max-age=31536000; includeSubDomains; preload"
+
+  # Additional headers (FR-005)
+  x-content-type-options: "nosniff"
+  x-frame-options: "DENY"
+  referrer-policy: "strict-origin-when-cross-origin"
+  cross-origin-opener-policy: "same-origin"
+  cross-origin-embedder-policy: "require-corp"
+
+  # Permissions Policy (FR-005)
+  permissions-policy: "camera=(), microphone=(), geolocation=(), payment=()"
+
+# Rate Limiting (FR-007)
+rate_limits:
+  # REST API limits
+  rest:
+    limit: 100  # requests
+    window: 10  # seconds
+    burst: 20   # additional burst capacity
+
+  # WebSocket limits
+  websocket:
+    handshake_limit: 10  # handshakes per IP per window
+    handshake_window: 10  # seconds
+    message_rate_limit: 100  # messages per second
+
+  # Backoff strategy
+  backoff:
+    strategy: exponential
+    base_delay: 1  # seconds
+    max_delay: 60  # seconds
+    multiplier: 2
+
+# CSRF Protection (FR-006)
+csrf:
+  enabled: true
+  header_name: X-CSRF-Token
+  cookie_name: csrf_token
+  cookie_same_site: strict
+  cookie_secure: true  # Requires HTTPS
+  token_length: 32
+
+# TLS Configuration (FR-003)
+tls:
+  enforce: true
+  redirect_http: true
+  min_version: "1.2"  # TLS 1.2 minimum
+  preferred_ciphers:
+    - TLS_AES_128_GCM_SHA256
+    - TLS_AES_256_GCM_SHA384
+    - TLS_CHACHA20_POLY1305_SHA256
+
+# Secrets Management (FR-008)
+secrets:
+  # Use environment variables or secret manager
+  use_env: true
+  env_file: .env  # Never commit this file!
+
+  # Secret rotation
+  rotation_enabled: true
+  rotation_schedule: "0 0 * * 0"  # Weekly, Sundays at midnight
+
+  # Key locations (never store actual keys in config)
+  jwt_private_key_env: JWT_PRIVATE_KEY
+  jwt_public_key_env: JWT_PUBLIC_KEY
+  encryption_key_env: ENCRYPTION_KEY
+
+# Logging Security (FR-009)
+logging:
+  structured: true
+  format: json
+  redact_pii: true
+
+  # Never log these fields
+  redact_fields:
+    - password
+    - token
+    - secret
+    - api_key
+    - authorization
+    - credit_card
+
+  # Correlation IDs
+  correlation_id_header: X-Request-ID
+
+  # Audit logging
+  audit:
+    enabled: true
+    path: logs/audit.log
+    retention_days: 365
+
+    # Actions to audit
+    audit_actions:
+      - admin_login
+      - user_create
+      - user_delete
+      - permission_change
+      - data_export
+      - data_purge
+      - config_change
+
+# Security Monitoring
+monitoring:
+  # Failed auth attempts
+  max_failed_auth_attempts: 5
+  lockout_duration_minutes: 15
+
+  # Anomaly detection
+  anomaly_detection: true
+  alert_threshold: high
+
+  # Security events to monitor
+  track_events:
+    - failed_login
+    - rate_limit_exceeded
+    - invalid_token
+    - csrf_failure
+    - origin_violation
+    - websocket_flood

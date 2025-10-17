@@ -1,0 +1,155 @@
+# Caddyfile for Soundlab - Feature 024
+# Security hardened reverse proxy with automatic TLS
+
+# Global options
+{
+    # Auto HTTPS
+    auto_https redirect_if_available
+
+    # TLS configuration (FR-003)
+    servers {
+        protocols h1 h2 h3
+        timeouts {
+            read_body 10s
+            read_header 5s
+            write 30s
+            idle 120s
+        }
+    }
+}
+
+soundlab.example.com {
+    # TLS (FR-003)
+    tls {
+        protocols tls1.2 tls1.3
+        ciphers TLS_AES_128_GCM_SHA256 TLS_AES_256_GCM_SHA384 TLS_CHACHA20_POLY1305_SHA256
+    }
+
+    # Security Headers (FR-003, FR-004, FR-005)
+    header {
+        # HSTS (FR-003)
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+
+        # CSP (FR-004)
+        Content-Security-Policy "default-src 'self'; script-src 'self' 'sha256-REPLACE_WITH_HASH'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' wss:; font-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+
+        # Additional headers (FR-005)
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Cross-Origin-Opener-Policy "same-origin"
+        Cross-Origin-Embedder-Policy "require-corp"
+        Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=()"
+
+        # Remove server header
+        -Server
+    }
+
+    # Logging
+    log {
+        output file /var/log/caddy/soundlab.log
+        format json
+    }
+
+    # Rate Limiting (FR-007)
+    # Using Caddy rate limit plugin
+    rate_limit {
+        zone api {
+            key {remote_host}
+            events 100
+            window 10s
+        }
+        zone ws {
+            key {remote_host}
+            events 10
+            window 10s
+        }
+    }
+
+    # API Endpoints
+    @api path /api/*
+    handle @api {
+        # Apply rate limit
+        rate_limit api
+
+        # Reverse proxy
+        reverse_proxy localhost:8000 {
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+
+            # Timeouts
+            transport http {
+                dial_timeout 10s
+                response_header_timeout 30s
+                read_timeout 30s
+                write_timeout 30s
+            }
+        }
+    }
+
+    # WebSocket Endpoints (FR-002)
+    @websocket path /ws/*
+    handle @websocket {
+        # Apply rate limit
+        rate_limit ws
+
+        # Reverse proxy with WebSocket support
+        reverse_proxy localhost:8000 {
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            header_up Origin {header.Origin}
+            header_up Sec-WebSocket-Protocol {header.Sec-WebSocket-Protocol}
+
+            # WebSocket timeouts (longer)
+            transport http {
+                dial_timeout 30s
+                response_header_timeout 300s
+                read_timeout 300s
+                write_timeout 300s
+            }
+        }
+    }
+
+    # Health Check
+    handle /health {
+        reverse_proxy localhost:8000
+    }
+
+    # Security.txt
+    handle /.well-known/security.txt {
+        root * /var/www/soundlab
+        file_server
+    }
+
+    # Frontend Static Files
+    handle {
+        root * /var/www/soundlab/dist
+
+        # Try files, fallback to index.html for SPA
+        try_files {path} {path}/ /index.html
+
+        # Cache static assets
+        @static path *.js *.css *.png *.jpg *.jpeg *.gif *.ico *.svg *.woff *.woff2 *.ttf
+        header @static Cache-Control "public, max-age=31536000, immutable"
+
+        file_server
+    }
+
+    # Block access to sensitive files
+    @denied path /config/* /.env* /.git/* /.vscode/* /node_modules/* *.pyc *.log
+    handle @denied {
+        abort
+    }
+
+    # Request size limit
+    request_body {
+        max_size 10MB
+    }
+}
+
+# HTTP to HTTPS redirect (automatic with auto_https)
+http://soundlab.example.com {
+    redir https://soundlab.example.com{uri} permanent
+}

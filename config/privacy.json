@@ -1,0 +1,95 @@
+{
+  "version": "1.0",
+  "last_updated": "2025-10-17",
+
+  "retention_periods": {
+    "logs": 30,
+    "session_metrics": 90,
+    "audit_logs": 365,
+    "temp_files": 7,
+    "recordings": 30,
+    "user_presets": 365,
+    "crash_reports": 90
+  },
+
+  "auto_purge": {
+    "enabled": true,
+    "schedule": "daily",
+    "time": "02:00",
+    "dry_run_first": false,
+    "notify_admin": true
+  },
+
+  "data_minimization": {
+    "collect_only_necessary": true,
+    "anonymize_analytics": true,
+    "no_audio_in_logs": true,
+
+    "frontend_storage": {
+      "allowed_in_localstorage": [
+        "preset_names",
+        "ui_preferences",
+        "theme_settings",
+        "layout_config"
+      ],
+      "forbidden_in_localstorage": [
+        "tokens",
+        "passwords",
+        "api_keys",
+        "session_data",
+        "user_credentials"
+      ],
+      "max_size_mb": 5
+    }
+  },
+
+  "pii_handling": {
+    "redact_in_logs": true,
+    "hash_identifiers": true,
+    "preserve_email_domains": false,
+
+    "pii_fields": [
+      "email",
+      "phone",
+      "ssn",
+      "credit_card",
+      "ip_address",
+      "user_id",
+      "session_id"
+    ]
+  },
+
+  "user_rights": {
+    "data_export_enabled": true,
+    "data_deletion_enabled": true,
+    "opt_out_analytics": true,
+    "anonymize_on_deletion": true
+  },
+
+  "encryption": {
+    "at_rest": {
+      "enabled": true,
+      "algorithm": "AES-256-GCM",
+      "key_rotation_days": 90
+    },
+    "in_transit": {
+      "enforce_tls": true,
+      "min_tls_version": "1.2"
+    }
+  },
+
+  "audit_trail": {
+    "log_data_access": true,
+    "log_exports": true,
+    "log_deletions": true,
+    "log_purges": true,
+    "retention_days": 365
+  },
+
+  "compliance": {
+    "framework": "GDPR-inspired",
+    "data_protection_officer": "security@soundlab.example.com",
+    "privacy_policy_url": "/docs/PRIVACY.md",
+    "cookie_consent_required": true
+  }
+}
