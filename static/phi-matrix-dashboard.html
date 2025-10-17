@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phi-Matrix Dashboard - Soundlab Unified Control</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #0a0a0a;
+            --bg-secondary: #1a1a1a;
+            --bg-tertiary: #2a2a2a;
+            --text-primary: #00ff00;
+            --text-secondary: #00ffff;
+            --text-tertiary: #ffff00;
+            --border-color: #333;
+            --accent-color: #00ff00;
+            --error-color: #ff4444;
+            --warning-color: #ff9900;
+        }
+
+        body {
+            font-family: 'Monaco', 'Courier New', monospace;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            overflow: hidden;
+            height: 100vh;
+        }
+
+        /* Header */
+        #header {
+            background: var(--bg-secondary);
+            border-bottom: 2px solid var(--accent-color);
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            height: 60px;
+        }
+
+        #header h1 {
+            font-size: 24px;
+            color: var(--text-secondary);
+            text-shadow: 0 0 10px var(--text-secondary);
+        }
+
+        #header-controls {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: var(--error-color);
+            box-shadow: 0 0 8px var(--error-color);
+            transition: all 0.3s;
+        }
+
+        .status-indicator.connected {
+            background: var(--accent-color);
+            box-shadow: 0 0 8px var(--accent-color);
+        }
+
+        .header-stat {
+            font-size: 11px;
+            color: #888;
+        }
+
+        .header-stat span {
+            color: var(--text-secondary);
+            font-weight: bold;
+        }
+
+        button {
+            background: #1a4d1a;
+            color: var(--accent-color);
+            border: 1px solid var(--accent-color);
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 11px;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            background: var(--accent-color);
+            color: var(--bg-primary);
+            box-shadow: 0 0 10px var(--accent-color);
+        }
+
+        button.active {
+            background: var(--accent-color);
+            color: var(--bg-primary);
+        }
+
+        button:disabled {
+            background: #2a2a2a;
+            color: #555;
+            border-color: #555;
+            cursor: not-allowed;
+        }
+
+        /* Main Container */
+        #container {
+            display: grid;
+            grid-template-columns: 300px 1fr 350px;
+            grid-template-rows: calc(100vh - 60px);
+            gap: 2px;
+            background: var(--border-color);
+        }
+
+        /* Left Panel - Control Matrix */
+        #left-panel {
+            background: var(--bg-secondary);
+            overflow-y: auto;
+            padding: 15px;
+        }
+
+        /* Center Panel - Visualizer */
+        #center-panel {
+            background: var(--bg-primary);
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Right Panel - Metrics & Analytics */
+        #right-panel {
+            background: var(--bg-secondary);
+            overflow-y: auto;
+            padding: 15px;
+        }
+
+        .panel-section {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 15px;
+        }
+
+        .panel-title {
+            color: var(--text-tertiary);
+            font-size: 13px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        /* Visualizer Container */
+        #visualizer-container {
+            flex: 1;
+            position: relative;
+            background: #000;
+        }
+
+        #visualizer-canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        #visualizer-tabs {
+            background: var(--bg-secondary);
+            display: flex;
+            gap: 2px;
+            padding: 5px;
+        }
+
+        .viz-tab {
+            flex: 1;
+            padding: 8px;
+            text-align: center;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            cursor: pointer;
+            font-size: 11px;
+            transition: all 0.3s;
+        }
+
+        .viz-tab:hover {
+            background: #3a3a3a;
+        }
+
+        .viz-tab.active {
+            background: var(--accent-color);
+            color: var(--bg-primary);
+            border-color: var(--accent-color);
+        }
+
+        /* Control Elements */
+        .control-group {
+            margin-bottom: 12px;
+        }
+
+        .control-label {
+            display: block;
+            font-size: 11px;
+            color: #888;
+            margin-bottom: 5px;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 4px;
+            border-radius: 2px;
+            background: var(--bg-primary);
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: var(--accent-color);
+            cursor: pointer;
+            box-shadow: 0 0 8px var(--accent-color);
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: var(--accent-color);
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 0 8px var(--accent-color);
+        }
+
+        .control-value {
+            font-size: 12px;
+            color: var(--text-secondary);
+            text-align: right;
+            margin-top: 3px;
+        }
+
+        /* Metrics Display */
+        .metric-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            border-bottom: 1px solid #1a1a1a;
+            font-size: 12px;
+        }
+
+        .metric-label {
+            color: #888;
+        }
+
+        .metric-value {
+            color: var(--text-secondary);
+            font-weight: bold;
+        }
+
+        .metric-value.critical {
+            color: var(--error-color);
+        }
+
+        .metric-value.warning {
+            color: var(--warning-color);
+        }
+
+        .metric-value.good {
+            color: var(--accent-color);
+        }
+
+        /* Channel Controls */
+        .channel-control {
+            background: #1a1a1a;
+            padding: 8px;
+            border-radius: 4px;
+            margin-bottom: 8px;
+            border-left: 3px solid var(--accent-color);
+        }
+
+        .channel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 6px;
+        }
+
+        .channel-name {
+            font-size: 11px;
+            font-weight: bold;
+            color: var(--text-secondary);
+        }
+
+        .channel-mute {
+            background: #2a2a2a;
+            border: 1px solid #444;
+            padding: 3px 8px;
+            font-size: 10px;
+        }
+
+        .channel-mute.active {
+            background: var(--error-color);
+            border-color: var(--error-color);
+            color: #fff;
+        }
+
+        /* State Sync Indicator */
+        #sync-indicator {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.9);
+            border: 1px solid var(--accent-color);
+            border-radius: 6px;
+            padding: 10px 15px;
+            font-size: 11px;
+            z-index: 1000;
+        }
+
+        #sync-indicator.error {
+            border-color: var(--error-color);
+            color: var(--error-color);
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--accent-color);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #00cc00;
+        }
+
+        /* Loading Overlay */
+        #loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        #loading-overlay.hidden {
+            display: none;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid var(--bg-tertiary);
+            border-top: 4px solid var(--accent-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Analytics Mini-View */
+        .analytics-summary {
+            background: #1a1a1a;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+
+        .analytics-stat {
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            padding: 4px 0;
+            color: #888;
+        }
+
+        .analytics-stat span {
+            color: var(--text-secondary);
+        }
+
+        /* Preset Quick Access */
+        .preset-quick {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+            margin-top: 10px;
+        }
+
+        .preset-btn {
+            padding: 8px;
+            font-size: 10px;
+            text-align: center;
+        }
+
+        /* Theme Toggle */
+        .theme-toggle {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            padding: 4px 10px;
+            font-size: 10px;
+        }
+
+        /* Responsive */
+        @media (max-width: 1200px) {
+            #container {
+                grid-template-columns: 250px 1fr 300px;
+            }
+        }
+
+        @media (max-width: 900px) {
+            #container {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto 1fr auto;
+            }
+
+            #left-panel, #right-panel {
+                max-height: 300px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Loading Overlay -->
+    <div id="loading-overlay">
+        <div class="spinner"></div>
+        <div style="color: var(--text-secondary);">Initializing Phi-Matrix Dashboard...</div>
+    </div>
+
+    <!-- Header -->
+    <div id="header">
+        <h1>Φ-MATRIX DASHBOARD</h1>
+        <div id="header-controls">
+            <div class="header-stat">
+                Sync: <span id="header-sync">--</span>ms
+            </div>
+            <div class="header-stat">
+                FPS: <span id="header-fps">0</span>
+            </div>
+            <div class="header-stat">
+                Master Time: <span id="header-time">0.0</span>s
+            </div>
+            <div class="status-indicator" id="connection-indicator"></div>
+            <button id="pause-btn" onclick="togglePause()">PAUSE</button>
+            <button class="theme-toggle" onclick="toggleTheme()">THEME</button>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <div id="container">
+        <!-- Left Panel: Control Matrix -->
+        <div id="left-panel">
+            <!-- Phi Control -->
+            <div class="panel-section">
+                <div class="panel-title">Φ MODULATION</div>
+                <div class="control-group">
+                    <label class="control-label">Φ Depth (0.618 - 1.618)</label>
+                    <input type="range" id="phi-depth" min="0.618" max="1.618" step="0.001" value="1.0" oninput="updatePhiDepth(this.value)">
+                    <div class="control-value" id="phi-depth-value">1.000</div>
+                </div>
+                <div class="control-group">
+                    <label class="control-label">Φ Phase (0 - 2π)</label>
+                    <input type="range" id="phi-phase" min="0" max="6.283" step="0.01" value="0" oninput="updatePhiPhase(this.value)">
+                    <div class="control-value" id="phi-phase-value">0.00</div>
+                </div>
+                <div class="control-group">
+                    <button id="adaptive-toggle" onclick="toggleAdaptive()">Enable Adaptive</button>
+                    <button id="phi-reset" onclick="resetPhi()">Reset Φ</button>
+                </div>
+            </div>
+
+            <!-- Channel Controls -->
+            <div class="panel-section">
+                <div class="panel-title">CHANNEL MATRIX (8)</div>
+                <div id="channel-controls"></div>
+            </div>
+
+            <!-- Preset Quick Access -->
+            <div class="panel-section">
+                <div class="panel-title">QUICK PRESETS</div>
+                <div class="preset-quick">
+                    <button class="preset-btn" onclick="loadPreset('default')">Default</button>
+                    <button class="preset-btn" onclick="loadPreset('deep')">Deep</button>
+                    <button class="preset-btn" onclick="loadPreset('flow')">Flow</button>
+                    <button class="preset-btn" onclick="loadPreset('peak')">Peak</button>
+                </div>
+            </div>
+
+            <!-- Recording Control -->
+            <div class="panel-section">
+                <div class="panel-title">SESSION</div>
+                <button id="record-btn" onclick="toggleRecording()">START RECORDING</button>
+                <div class="analytics-summary">
+                    <div class="analytics-stat">
+                        Duration: <span id="session-duration">0.0s</span>
+                    </div>
+                    <div class="analytics-stat">
+                        Samples: <span id="session-samples">0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Center Panel: Chromatic Visualizer -->
+        <div id="center-panel">
+            <div id="visualizer-tabs">
+                <div class="viz-tab active" data-mode="spectral" onclick="setVisualizerMode('spectral')">SPECTRAL GRID</div>
+                <div class="viz-tab" data-mode="breathing" onclick="setVisualizerMode('breathing')">Φ-BREATHING</div>
+                <div class="viz-tab" data-mode="topology" onclick="setVisualizerMode('topology')">TOPOLOGY</div>
+            </div>
+            <div id="visualizer-container">
+                <canvas id="visualizer-canvas"></canvas>
+            </div>
+        </div>
+
+        <!-- Right Panel: Metrics & Analytics -->
+        <div id="right-panel">
+            <!-- Real-Time Metrics -->
+            <div class="panel-section">
+                <div class="panel-title">CONSCIOUSNESS METRICS</div>
+                <div id="metrics-display">
+                    <div class="metric-row">
+                        <span class="metric-label">ICI:</span>
+                        <span class="metric-value" id="metric-ici">0.000</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Coherence:</span>
+                        <span class="metric-value" id="metric-coherence">0.000</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Criticality:</span>
+                        <span class="metric-value" id="metric-criticality">0.000</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Φ Breathing:</span>
+                        <span class="metric-value" id="metric-breathing">0.00</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Performance Stats -->
+            <div class="panel-section">
+                <div class="panel-title">PERFORMANCE</div>
+                <div id="performance-display">
+                    <div class="metric-row">
+                        <span class="metric-label">Render FPS:</span>
+                        <span class="metric-value" id="perf-fps">0</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Frame Time:</span>
+                        <span class="metric-value" id="perf-frame-time">0ms</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">WS Latency:</span>
+                        <span class="metric-value" id="perf-ws-latency">0ms</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">Sync Status:</span>
+                        <span class="metric-value good" id="perf-sync-status">SYNCED</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Analytics Summary -->
+            <div class="panel-section">
+                <div class="panel-title">ANALYTICS</div>
+                <div class="analytics-summary">
+                    <div class="analytics-stat">
+                        Sessions Loaded: <span id="analytics-sessions">0</span>
+                    </div>
+                    <div class="analytics-stat">
+                        Memory Usage: <span id="analytics-memory">0 MB</span>
+                    </div>
+                </div>
+                <button style="margin-top: 10px; width: 100%;" onclick="openAnalytics()">Open Full Analytics</button>
+            </div>
+
+            <!-- Cluster Monitor -->
+            <div class="panel-section">
+                <div class="panel-title">CLUSTER STATUS</div>
+                <div class="analytics-summary">
+                    <div class="analytics-stat">
+                        Nodes: <span id="cluster-nodes">0</span>
+                    </div>
+                    <div class="analytics-stat">
+                        Connected: <span id="cluster-connected">0</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sync Indicator -->
+    <div id="sync-indicator">
+        Sync: <span id="sync-time">0.0ms</span> | Desync: <span id="desync-value">0.0ms</span>
+    </div>
+
+    <script src="phi-matrix-dashboard.js"></script>
+</body>
+</html>

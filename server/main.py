@@ -48,6 +48,7 @@ from hybrid_node import HybridNode, HybridNodeConfig, PhiSource, HybridMetrics
 from session_comparator import SessionComparator, SessionStats, ComparisonResult
 from correlation_analyzer import CorrelationAnalyzer, CorrelationMatrix
 from chromatic_visualizer import ChromaticVisualizer, VisualizerConfig
+from state_sync_manager import StateSyncManager, SyncConfig
 
 
 class SoundlabServer:
@@ -356,6 +357,41 @@ class SoundlabServer:
                         criticality=criticality
                     )
 
+                # Update StateSyncManager (Feature 017)
+                if self.state_sync_manager:
+                    phi_phase = self.auto_phi_learner.state.phi_phase
+                    phi_depth = self.auto_phi_learner.state.phi_depth
+                    ici = getattr(frame, 'ici', 0.5)
+                    coherence = getattr(frame, 'phase_coherence', 0.5)
+                    criticality = getattr(frame, 'criticality', 1.0)
+
+                    # Get phi breathing from chromatic visualizer if available
+                    phi_breathing = 0.5
+                    if self.chromatic_visualizer:
+                        chrom_state = self.chromatic_visualizer.get_current_state()
+                        if chrom_state:
+                            phi_breathing = chrom_state.get('phi_breathing', 0.5)
+
+                    # Update synchronized state
+                    self.state_sync_manager.update_state(
+                        ici=ici,
+                        coherence=coherence,
+                        criticality=criticality,
+                        phi_phase=phi_phase,
+                        phi_depth=phi_depth,
+                        phi_breathing=phi_breathing,
+                        chromatic_enabled=True,
+                        control_matrix_active=True,
+                        adaptive_enabled=self.auto_phi_learner.enabled,
+                        adaptive_mode=self.auto_phi_learner.mode if self.auto_phi_learner.enabled else None,
+                        is_recording=self.session_recorder.is_recording if self.session_recorder else False,
+                        is_playing=self.timeline_player.is_playing if self.timeline_player else False,
+                        cluster_nodes_count=len(self.phasenet.peers) if self.phasenet else 0
+                    )
+
+                    # Broadcast to dashboard clients
+                    asyncio.run(self.state_sync_manager.broadcast_state())
+
             self.audio_server.metrics_callback = metrics_callback_with_predictor
 
             # Wire forecast callback to Auto-Phi and Criticality Balancer (FR-006)
@@ -546,6 +582,17 @@ class SoundlabServer:
             enable_logging=enable_logging
         )
         self.chromatic_visualizer = ChromaticVisualizer(visualizer_config)
+
+        # Initialize State Sync Manager (Feature 017)
+        print("\n[Main] Initializing State Sync Manager...")
+        sync_config = SyncConfig(
+            max_latency_ms=100.0,
+            max_desync_ms=100.0,
+            websocket_timeout_ms=50.0,
+            enable_logging=enable_logging
+        )
+        self.state_sync_manager = StateSyncManager(sync_config)
+        self.state_sync_manager.start_monitoring()
 
         # Initialize latency streamer (will be created by latency API)
         self.latency_streamer: Optional[LatencyStreamer] = None
@@ -2502,6 +2549,129 @@ class SoundlabServer:
                 "message": f"Frequency scale set to {scale}",
                 "frequency_scale": scale
             }
+
+        # Phi-Matrix Dashboard API endpoints (Feature 017)
+        @self.app.get("/api/dashboard/state")
+        async def get_dashboard_state():
+            """
+            Get current synchronized dashboard state (FR-002, FR-003)
+
+            Returns:
+                Current synchronized state across all modules
+            """
+            state = self.state_sync_manager.get_state()
+
+            if state:
+                return {
+                    "ok": True,
+                    **state
+                }
+            else:
+                return {
+                    "ok": False,
+                    "message": "No dashboard state available"
+                }
+
+        @self.app.post("/api/dashboard/pause")
+        async def pause_dashboard():
+            """
+            Pause all synchronized modules (User Story 2)
+
+            Returns:
+                Success status with master time
+            """
+            self.state_sync_manager.pause()
+
+            return {
+                "ok": True,
+                "message": "Dashboard paused",
+                "master_time": self.state_sync_manager.get_master_time(),
+                "is_paused": True
+            }
+
+        @self.app.post("/api/dashboard/resume")
+        async def resume_dashboard():
+            """
+            Resume all synchronized modules (User Story 2)
+
+            Returns:
+                Success status with master time
+            """
+            self.state_sync_manager.resume()
+
+            return {
+                "ok": True,
+                "message": "Dashboard resumed",
+                "master_time": self.state_sync_manager.get_master_time(),
+                "is_paused": False
+            }
+
+        @self.app.get("/api/dashboard/latency")
+        async def get_dashboard_latency():
+            """
+            Get WebSocket latency statistics (FR-003, SC-001)
+
+            Returns:
+                Latency statistics and success criteria compliance
+            """
+            stats = self.state_sync_manager.get_latency_stats()
+
+            return {
+                "ok": True,
+                **stats
+            }
+
+        @self.app.get("/api/dashboard/sync-health")
+        async def get_sync_health():
+            """
+            Get synchronization health report (SC-004)
+
+            Returns:
+                Sync health status and desync detection
+            """
+            health = self.state_sync_manager.check_sync_health()
+
+            return {
+                "ok": True,
+                **health
+            }
+
+        # Dashboard WebSocket endpoint (FR-003)
+        @self.app.websocket("/ws/dashboard")
+        async def websocket_dashboard(websocket):
+            """
+            WebSocket endpoint for unified dashboard synchronization (Feature 017)
+
+            Provides:
+            - Bidirectional communication < 50ms (FR-003)
+            - State synchronization across all modules (FR-002)
+            - Pause/resume coordination (User Story 2)
+            - Interactive control surface (User Story 3)
+            """
+            from fastapi import WebSocket, WebSocketDisconnect
+            import json
+
+            await websocket.accept()
+            await self.state_sync_manager.register_client(websocket)
+
+            try:
+                while True:
+                    # Receive message from client
+                    data = await websocket.receive_text()
+                    message = json.loads(data)
+
+                    # Handle message and get response
+                    response = await self.state_sync_manager.handle_client_message(websocket, message)
+
+                    # Send response
+                    if response:
+                        await websocket.send_json(response)
+
+            except WebSocketDisconnect:
+                await self.state_sync_manager.unregister_client(websocket)
+            except Exception as e:
+                print(f"[Dashboard WebSocket] Error: {e}")
+                await self.state_sync_manager.unregister_client(websocket)
 
         # Metrics WebSocket endpoint
         @self.app.websocket("/ws/metrics")
