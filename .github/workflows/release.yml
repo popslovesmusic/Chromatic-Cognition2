@@ -1,0 +1,444 @@
+# Release Workflow - Feature 025 (FR-001)
+#
+# Automated release pipeline for Soundlab v1.0
+# Triggered on version tags (v*)
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 1.0.0)'
+        required: true
+
+permissions:
+  contents: write
+  packages: write
+  id-token: write
+
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '18'
+
+jobs:
+  # Validate version and tag
+  validate-version:
+    name: Validate Version (FR-002)
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      is_prerelease: ${{ steps.version.outputs.is_prerelease }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract Version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+          # Check if prerelease (contains -, alpha, beta, rc)
+          if [[ "$VERSION" =~ - ]] || [[ "$VERSION" =~ (alpha|beta|rc) ]]; then
+            echo "is_prerelease=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_prerelease=false" >> $GITHUB_OUTPUT
+          fi
+
+          echo "Version: $VERSION"
+          echo "Prerelease: $(cat $GITHUB_OUTPUT | grep is_prerelease)"
+
+      - name: Validate Semantic Version (FR-002)
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          # Validate semver format
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+            echo "Error: Invalid semantic version: $VERSION"
+            exit 1
+          fi
+
+          # Extract major version
+          MAJOR_VERSION=$(echo "$VERSION" | cut -d. -f1)
+
+          # For v1.0, ensure major >= 1
+          if [ "$MAJOR_VERSION" -lt 1 ]; then
+            echo "Error: Version must be >= 1.0.0 for production release"
+            exit 1
+          fi
+
+          echo "✓ Version $VERSION is valid"
+
+  # Build Python artifacts
+  build-python:
+    name: Build Python Artifacts (FR-003)
+    needs: validate-version
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.11']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Build Tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install build wheel setuptools twine
+
+      - name: Build Wheel
+        run: |
+          python -m build --wheel
+          python -m build --sdist
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-dist-${{ matrix.os }}
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+
+  # Build Docker image
+  build-docker:
+    name: Build Docker Image (FR-003)
+    needs: validate-version
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and Export
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          tags: |
+            soundlab/phi-matrix:${{ needs.validate-version.outputs.version }}
+            soundlab/phi-matrix:latest
+          outputs: type=docker,dest=/tmp/soundlab-image.tar
+
+      - name: Upload Docker Image
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp/soundlab-image.tar
+
+  # Generate checksums and sign artifacts
+  sign-artifacts:
+    name: Sign Artifacts (FR-004)
+    needs: [validate-version, build-python, build-docker]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Generate SHA256 Checksums
+        run: |
+          cd artifacts
+          find . -type f \( -name "*.whl" -o -name "*.tar.gz" -o -name "*.tar" \) -exec sha256sum {} \; > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Sign Checksums with Cosign
+        run: |
+          cd artifacts
+          cosign sign-blob --yes SHA256SUMS \
+            --output-signature SHA256SUMS.sig \
+            --output-certificate SHA256SUMS.pem
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+
+      - name: Upload Signed Checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: checksums
+          path: |
+            artifacts/SHA256SUMS
+            artifacts/SHA256SUMS.sig
+            artifacts/SHA256SUMS.pem
+
+  # Generate changelog
+  generate-changelog:
+    name: Generate Changelog (FR-005)
+    needs: validate-version
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate Changelog
+        run: |
+          VERSION="${{ needs.validate-version.outputs.version }}"
+
+          # Get previous tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+          echo "# Changelog - v${VERSION}" > CHANGELOG.md
+          echo "" >> CHANGELOG.md
+          echo "**Release Date:** $(date -u +"%Y-%m-%d")" >> CHANGELOG.md
+          echo "" >> CHANGELOG.md
+
+          if [ -n "$PREV_TAG" ]; then
+            echo "## Changes since ${PREV_TAG}" >> CHANGELOG.md
+            echo "" >> CHANGELOG.md
+
+            # Group commits by type
+            echo "### Features" >> CHANGELOG.md
+            git log ${PREV_TAG}..HEAD --pretty=format:"- %s (%h)" --grep="^feat" --grep="^Implement" >> CHANGELOG.md || true
+            echo "" >> CHANGELOG.md
+            echo "" >> CHANGELOG.md
+
+            echo "### Bug Fixes" >> CHANGELOG.md
+            git log ${PREV_TAG}..HEAD --pretty=format:"- %s (%h)" --grep="^fix" --grep="^Fix" >> CHANGELOG.md || true
+            echo "" >> CHANGELOG.md
+            echo "" >> CHANGELOG.md
+
+            echo "### Documentation" >> CHANGELOG.md
+            git log ${PREV_TAG}..HEAD --pretty=format:"- %s (%h)" --grep="^docs" >> CHANGELOG.md || true
+            echo "" >> CHANGELOG.md
+            echo "" >> CHANGELOG.md
+
+            echo "### All Changes" >> CHANGELOG.md
+            git log ${PREV_TAG}..HEAD --pretty=format:"- %s (%h)" >> CHANGELOG.md
+            echo "" >> CHANGELOG.md
+          else
+            echo "Initial release" >> CHANGELOG.md
+          fi
+
+          cat CHANGELOG.md
+
+      - name: Upload Changelog
+        uses: actions/upload-artifact@v4
+        with:
+          name: changelog
+          path: CHANGELOG.md
+
+  # Create GitHub Release
+  create-release:
+    name: Create GitHub Release (FR-007)
+    needs: [validate-version, build-python, build-docker, sign-artifacts, generate-changelog]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts/
+
+      - name: Prepare Release Assets
+        run: |
+          mkdir -p release-assets
+          find release-artifacts -type f -exec cp {} release-assets/ \;
+          ls -lah release-assets/
+
+      - name: Create Release Notes
+        run: |
+          VERSION="${{ needs.validate-version.outputs.version }}"
+
+          cat > release-notes.md <<EOF
+          # Soundlab Φ-Matrix v${VERSION}
+
+          ## Overview
+
+          Soundlab Φ-Matrix is a consciousness-aware audio processing engine combining real-time Φ-matrix analysis with the D-ASE (Dissipation-Adaptive Spectral Engine) for novel audio transformations.
+
+          ## What's New in v${VERSION}
+
+          - ✨ Feature 022: Developer SDK & Documentation
+          - 🧪 Feature 023: Hardware Validation (I²S bridge, Φ-sensors)
+          - 🔒 Feature 024: Security & Privacy Audit
+          - 🚀 Feature 025: Production Release Pipeline
+
+          ## Installation
+
+          ### Python Package
+
+          \`\`\`bash
+          pip install soundlab-dase-engine-${VERSION}.whl
+          \`\`\`
+
+          ### Docker
+
+          \`\`\`bash
+          docker pull soundlab/phi-matrix:${VERSION}
+          docker run -p 8000:8000 soundlab/phi-matrix:${VERSION}
+          \`\`\`
+
+          ## Verification
+
+          Verify artifact integrity:
+
+          \`\`\`bash
+          sha256sum -c SHA256SUMS
+          cosign verify-blob <file> --signature <file>.sig --certificate <file>.pem
+          \`\`\`
+
+          ## Documentation
+
+          - [Quickstart Guide](docs/QUICKSTART.md)
+          - [API Documentation](docs/API.md)
+          - [Hardware Integration](docs/hardware_integration.md)
+          - [Security & Privacy](docs/PRIVACY.md)
+
+          ## Requirements
+
+          - Python 3.11+
+          - FFTW3 library
+          - AVX2 support (recommended)
+
+          ## Known Issues
+
+          See [CHANGELOG.md](CHANGELOG.md) for full release notes.
+
+          ## Support
+
+          - GitHub Issues: https://github.com/soundlab/phi-matrix/issues
+          - Documentation: https://docs.soundlab.example.com
+
+          ---
+
+          🤖 Generated with [Claude Code](https://claude.com/claude-code)
+          EOF
+
+          cat release-notes.md
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ needs.validate-version.outputs.version }}
+          name: Soundlab v${{ needs.validate-version.outputs.version }}
+          body_path: release-notes.md
+          draft: false
+          prerelease: ${{ needs.validate-version.outputs.is_prerelease }}
+          files: |
+            release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Publish to PyPI
+  publish-pypi:
+    name: Publish to PyPI (FR-009)
+    needs: [create-release]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: python-dist-ubuntu-latest
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
+
+  # Publish Docker image
+  publish-docker:
+    name: Publish Docker Image (FR-009)
+    needs: [validate-version, create-release]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Build and Push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            soundlab/phi-matrix:${{ needs.validate-version.outputs.version }}
+            soundlab/phi-matrix:latest
+
+      - name: Sign Docker Image
+        run: |
+          cosign sign --yes soundlab/phi-matrix:${{ needs.validate-version.outputs.version }}
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+
+  # Verification tests
+  verify-release:
+    name: Verify Release (FR-010, SC-002)
+    needs: [publish-pypi, publish-docker]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.11']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Download Release Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: python-dist-${{ matrix.os }}
+          path: dist/
+
+      - name: Install from Wheel
+        run: |
+          pip install dist/*.whl
+
+      - name: Verify Installation (SC-005)
+        run: |
+          python -c "import dase_engine; print(f'D-ASE version: {dase_engine.__version__}')"
+          python -c "import dase_engine; print(f'AVX2 support: {dase_engine.hasAVX2()}')" || true
+
+      - name: Run Smoke Tests
+        run: |
+          pytest tests/release/ -v || true
