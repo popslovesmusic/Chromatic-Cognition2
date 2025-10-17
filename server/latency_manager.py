@@ -18,7 +18,7 @@ from datetime import datetime
 import os
 from pathlib import Path
 
-from latency_frame import LatencyFrame, create_default_latency_frame
+from .latency_frame import LatencyFrame, create_default_latency_frame
 
 
 class DriftMonitor:

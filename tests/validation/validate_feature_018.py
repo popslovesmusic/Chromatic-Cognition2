@@ -16,9 +16,9 @@ import time
 import os
 import json
 import numpy as np
-from adaptive_scaler import AdaptiveScaler, ScalerConfig, PerformanceMetrics
-from sync_profiler import SyncProfiler, ProfilerConfig
-from benchmark_runner import BenchmarkRunner, BenchmarkConfig
+from server.adaptive_scaler import AdaptiveScaler, ScalerConfig, PerformanceMetrics
+from server.sync_profiler import SyncProfiler, ProfilerConfig
+from server.benchmark_runner import BenchmarkRunner, BenchmarkConfig
 
 print("=" * 70)
 print("Feature 018: Phi-Adaptive Benchmark - Validation")

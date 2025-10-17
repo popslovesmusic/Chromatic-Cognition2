@@ -27,8 +27,8 @@ from dataclasses import dataclass, asdict
 from datetime import datetime
 import numpy as np
 
-from adaptive_scaler import AdaptiveScaler, ScalerConfig, PerformanceMetrics
-from sync_profiler import SyncProfiler, ProfilerConfig
+from .adaptive_scaler import AdaptiveScaler, ScalerConfig, PerformanceMetrics
+from .sync_profiler import SyncProfiler, ProfilerConfig
 
 
 @dataclass

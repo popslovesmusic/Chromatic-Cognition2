@@ -27,7 +27,7 @@ from dataclasses import dataclass, asdict
 from enum import Enum
 import numpy as np
 
-from phi_sensor_bridge import SensorData, SensorType
+from .phi_sensor_bridge import SensorData, SensorType
 
 
 class PhiSourcePriority(Enum):

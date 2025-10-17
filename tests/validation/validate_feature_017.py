@@ -15,7 +15,7 @@ import time
 import asyncio
 import numpy as np
 import json
-from state_sync_manager import StateSyncManager, SyncConfig
+from server.state_sync_manager import StateSyncManager, SyncConfig
 
 print("=" * 70)
 print("Feature 017: Phi-Matrix Dashboard - Validation")

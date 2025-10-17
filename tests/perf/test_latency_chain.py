@@ -12,7 +12,7 @@ Usage:
 import sys
 import time
 import argparse
-from hybrid_bridge import HybridBridge
+from server.hybrid_bridge import HybridBridge
 
 
 def test_latency_chain(port=None):

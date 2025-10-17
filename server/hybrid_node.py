@@ -33,7 +33,7 @@ from typing import Optional, Callable, Dict, List
 from dataclasses import dataclass, asdict
 from enum import Enum
 
-from chromatic_field_processor import ChromaticFieldProcessor
+from .chromatic_field_processor import ChromaticFieldProcessor
 
 # Optional PhiRouter support (Feature 011)
 try:

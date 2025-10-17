@@ -6,7 +6,7 @@ Tests that require the server to be running - can use simulation mode.
 """
 
 import pytest
-import requests
+import server.requests
 import time
 import os
 

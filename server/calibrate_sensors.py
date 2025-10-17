@@ -18,7 +18,7 @@ import json
 import logging
 from pathlib import Path
 from datetime import datetime
-from sensor_manager import SensorManager
+from .sensor_manager import SensorManager
 
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

@@ -15,7 +15,7 @@ import os
 import sys
 from pathlib import Path
 from datetime import datetime
-import ast
+import server.ast
 
 print("=" * 70)
 print("Feature 022: Developer SDK & Documentation - Validation")

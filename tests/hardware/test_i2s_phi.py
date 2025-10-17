@@ -20,8 +20,8 @@ from pathlib import Path
 # Add server directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent / "server"))
 
-from sensor_manager import SensorManager, SensorReading
-from sensor_streamer import SensorStreamer, create_sensor_websocket_endpoint
+from server.sensor_manager import SensorManager, SensorReading
+from server.sensor_streamer import SensorStreamer, create_sensor_websocket_endpoint
 
 
 class TestSensorManager:

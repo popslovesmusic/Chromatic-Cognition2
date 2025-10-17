@@ -18,7 +18,7 @@ from typing import List, Dict, Optional, Tuple
 from dataclasses import dataclass, asdict
 from collections import defaultdict
 
-from session_memory import MetricSnapshot
+from .session_memory import MetricSnapshot
 
 
 @dataclass

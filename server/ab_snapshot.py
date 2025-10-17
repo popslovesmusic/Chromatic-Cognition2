@@ -8,7 +8,7 @@ from typing import Optional, Literal
 import copy
 import time
 
-from preset_model import Preset, create_default_preset
+from .preset_model import Preset, create_default_preset
 
 
 ABSlot = Literal["A", "B"]

@@ -18,15 +18,15 @@ Success Criteria:
 
 import time
 import unittest
-import threading
+import server.threading
 from typing import List, Tuple
 import numpy as np
 
-from phi_sensor_bridge import (
+from server.phi_sensor_bridge import (
     SensorData, SensorType, SensorConfig,
     MIDIInput, SerialSensorInput, AudioBeatDetector
 )
-from phi_router import (
+from server.phi_router import (
     PhiRouter, PhiRouterConfig, PhiSourcePriority, PhiRouterStatus
 )
 

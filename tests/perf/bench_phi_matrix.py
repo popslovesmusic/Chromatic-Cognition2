@@ -25,7 +25,7 @@ import asyncio
 import websockets
 import json
 import time
-import psutil
+import server.psutil
 import sys
 import os
 import argparse

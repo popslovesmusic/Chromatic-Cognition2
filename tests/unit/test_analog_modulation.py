@@ -13,7 +13,7 @@ import sys
 import time
 import math
 import argparse
-from hybrid_bridge import HybridBridge, ControlVoltage
+from server.hybrid_bridge import HybridBridge, ControlVoltage
 
 
 def test_analog_modulation(port=None):

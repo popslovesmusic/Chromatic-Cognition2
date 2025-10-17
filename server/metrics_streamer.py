@@ -19,8 +19,8 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 import logging
 
-from metrics_frame import MetricsFrame, create_idle_frame
-from metrics_logger import MetricsLogger
+from .metrics_frame import MetricsFrame, create_idle_frame
+from .metrics_logger import MetricsLogger
 
 
 class MetricsStreamer:

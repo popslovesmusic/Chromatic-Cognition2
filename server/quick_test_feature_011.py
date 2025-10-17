@@ -4,8 +4,8 @@ Quick functionality test for Feature 011 - no delays
 
 import time
 import numpy as np
-from phi_sensor_bridge import SensorData, SensorType, AudioBeatDetector, SensorConfig
-from phi_router import PhiRouter, PhiRouterConfig, PhiSourcePriority
+from .phi_sensor_bridge import SensorData, SensorType, AudioBeatDetector, SensorConfig
+from .phi_router import PhiRouter, PhiRouterConfig, PhiSourcePriority
 
 print("=" * 60)
 print("Feature 011: Quick Functionality Test")

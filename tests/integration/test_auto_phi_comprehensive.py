@@ -15,7 +15,7 @@ Usage:
 import sys
 import time
 import numpy as np
-from auto_phi import AutoPhiLearner, AutoPhiConfig
+from server.auto_phi import AutoPhiLearner, AutoPhiConfig
 
 
 # Mock metrics frame

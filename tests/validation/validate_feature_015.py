@@ -6,8 +6,8 @@ Validates core functionality of multi-session analysis system.
 
 import time
 import numpy as np
-from session_comparator import SessionComparator, SessionStats, ComparisonResult
-from correlation_analyzer import CorrelationAnalyzer, CorrelationMatrix
+from server.session_comparator import SessionComparator, SessionStats, ComparisonResult
+from server.correlation_analyzer import CorrelationAnalyzer, CorrelationMatrix
 
 print("=" * 70)
 print("Feature 015: Multi-Session Comparative Analytics - Validation")

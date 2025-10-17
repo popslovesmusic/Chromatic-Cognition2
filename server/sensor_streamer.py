@@ -15,7 +15,7 @@ import logging
 from typing import Set, Dict, Any
 from dataclasses import asdict
 from fastapi import WebSocket, WebSocketDisconnect, FastAPI
-from sensor_manager import SensorManager, SensorReading
+from .sensor_manager import SensorManager, SensorReading
 
 
 class SensorStreamer:

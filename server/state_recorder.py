@@ -25,7 +25,7 @@ from dataclasses import dataclass, asdict
 from datetime import datetime
 from pathlib import Path
 
-from session_memory import SessionMemory, MetricSnapshot
+from .session_memory import SessionMemory, MetricSnapshot
 
 
 @dataclass

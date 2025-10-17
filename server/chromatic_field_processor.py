@@ -14,7 +14,7 @@ import numpy as np
 from scipy import signal
 from typing import Dict, Optional, Tuple
 import time
-from ici_engine import IntegratedChromaticInformation, ICIConfig
+from .ici_engine import IntegratedChromaticInformation, ICIConfig
 
 # Add sase amp fixed to path to import dase_engine
 DASE_PATH = os.path.join(os.path.dirname(__file__), '..', 'sase amp fixed')

@@ -13,7 +13,7 @@ import websockets
 import json
 import sys
 import time
-import random
+import server.random
 
 
 async def test_ui_sync(server_url='ws://localhost:8000/ws/ui', duration_minutes=10):

@@ -17,7 +17,7 @@ from typing import List, Optional, Dict, Tuple
 from datetime import datetime
 import logging
 
-from preset_model import Preset, CollisionPolicy, create_default_preset
+from .preset_model import Preset, CollisionPolicy, create_default_preset
 
 
 class PresetStore:

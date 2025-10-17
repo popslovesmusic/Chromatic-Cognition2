@@ -18,7 +18,7 @@ import time
 import asyncio
 import argparse
 from typing import List
-from hybrid_node import HybridNode, HybridNodeConfig, PhiSource, HybridMetrics
+from server.hybrid_node import HybridNode, HybridNodeConfig, PhiSource, HybridMetrics
 
 
 def test_sc001_no_dropouts():

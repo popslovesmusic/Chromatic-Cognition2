@@ -13,7 +13,7 @@ from typing import List, Optional
 from datetime import datetime
 from pathlib import Path
 
-from metrics_frame import MetricsFrame
+from .metrics_frame import MetricsFrame
 
 
 class MetricsLogger:

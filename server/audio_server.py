@@ -21,14 +21,14 @@ from queue import Queue, Empty
 from typing import Optional, Callable, Dict
 import traceback
 
-from chromatic_field_processor import ChromaticFieldProcessor
-from phi_modulator_controller import PhiModulatorController
-from downmix import StereoDownmixer
-from latency_manager import LatencyManager
-from metrics_frame import MetricsFrame, create_default_metrics_frame
-from latency_frame import LatencyFrame
-from metrics_logger import MetricsLogger
-from latency_logger import LatencyLogger
+from .chromatic_field_processor import ChromaticFieldProcessor
+from .phi_modulator_controller import PhiModulatorController
+from .downmix import StereoDownmixer
+from .latency_manager import LatencyManager
+from .metrics_frame import MetricsFrame, create_default_metrics_frame
+from .latency_frame import LatencyFrame
+from .metrics_logger import MetricsLogger
+from .latency_logger import LatencyLogger
 
 
 class AudioServer:

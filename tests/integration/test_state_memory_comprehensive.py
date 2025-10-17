@@ -15,7 +15,7 @@ Usage:
 import sys
 import time
 import numpy as np
-from state_memory import StateMemory, StateMemoryConfig
+from server.state_memory import StateMemory, StateMemoryConfig
 
 
 def test_hysteresis_effect(verbose=True):

@@ -25,8 +25,8 @@ from dataclasses import dataclass
 from enum import Enum
 import numpy as np
 
-from session_memory import SessionMemory, MetricSnapshot
-from phi_predictor import PhiPredictor, PredictionResult
+from .session_memory import SessionMemory, MetricSnapshot
+from .phi_predictor import PhiPredictor, PredictionResult
 
 
 class AdaptiveMode(Enum):

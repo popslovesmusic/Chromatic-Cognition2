@@ -22,7 +22,7 @@ import numpy as np
 from scipy.interpolate import interp1d
 from scipy.signal import savgol_filter
 
-from session_memory import SessionMemory, MetricSnapshot
+from .session_memory import SessionMemory, MetricSnapshot
 
 
 @dataclass

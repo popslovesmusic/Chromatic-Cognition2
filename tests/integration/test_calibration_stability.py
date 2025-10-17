@@ -12,7 +12,7 @@ Usage:
 import sys
 import time
 import argparse
-from hybrid_bridge import HybridBridge, ControlVoltage
+from server.hybrid_bridge import HybridBridge, ControlVoltage
 
 
 def test_calibration_stability(port=None, duration_seconds=3600):

@@ -6,8 +6,8 @@ Validates core functionality without long delays.
 
 import time
 import numpy as np
-from phi_sensor_bridge import SensorData, SensorType, SensorConfig, AudioBeatDetector
-from phi_router import PhiRouter, PhiRouterConfig, PhiSourcePriority
+from server.phi_sensor_bridge import SensorData, SensorType, SensorConfig, AudioBeatDetector
+from server.phi_router import PhiRouter, PhiRouterConfig, PhiSourcePriority
 
 print("=" * 70)
 print("Feature 011: Real-time Phi Sensor Binding - Quick Validation")

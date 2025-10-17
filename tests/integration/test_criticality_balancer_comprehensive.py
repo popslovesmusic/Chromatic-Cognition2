@@ -15,7 +15,7 @@ Usage:
 import sys
 import time
 import numpy as np
-from criticality_balancer import CriticalityBalancer, CriticalityBalancerConfig
+from server.criticality_balancer import CriticalityBalancer, CriticalityBalancerConfig
 
 
 # Mock metrics frame

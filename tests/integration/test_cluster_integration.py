@@ -12,8 +12,8 @@ Usage:
 import sys
 import time
 import argparse
-import requests
-from hybrid_bridge import HybridBridge, ControlVoltage
+import server.requests
+from server.hybrid_bridge import HybridBridge, ControlVoltage
 
 
 def test_cluster_integration(port=None, cluster_url="http://localhost:8000"):

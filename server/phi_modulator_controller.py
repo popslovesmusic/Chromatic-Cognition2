@@ -11,7 +11,7 @@ import time
 import os
 from datetime import datetime
 
-from phi_sources import (
+from .phi_sources import (
     PhiSource, PhiState,
     ManualSource, AudioEnvelopeSource, InternalOscillatorSource,
     MIDISource, SensorSource

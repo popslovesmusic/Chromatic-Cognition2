@@ -13,7 +13,7 @@ from datetime import datetime
 from typing import Optional, TextIO
 import threading
 
-from latency_frame import LatencyFrame
+from .latency_frame import LatencyFrame
 
 
 class LatencyLogger:

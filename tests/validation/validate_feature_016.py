@@ -6,7 +6,7 @@ Validates core functionality of synesthetic visualization system.
 
 import time
 import numpy as np
-from chromatic_visualizer import (
+from server.chromatic_visualizer import (
     ChromaticVisualizer,
     VisualizerConfig,
     ColorMapper,

@@ -12,7 +12,7 @@ Tests cover:
 
 import sys
 import time
-from hw_interface import HardwareInterface, ConsciousnessMetrics
+from server.hw_interface import HardwareInterface, ConsciousnessMetrics
 
 def test_device_listing():
     """Test listing available serial devices"""

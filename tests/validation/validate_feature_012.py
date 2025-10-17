@@ -6,9 +6,9 @@ Validates core functionality of adaptive control system.
 
 import time
 import numpy as np
-from session_memory import SessionMemory, MetricSnapshot
-from phi_predictor import PhiPredictor
-from phi_adaptive_controller import PhiAdaptiveController, AdaptiveConfig, AdaptiveMode
+from server.session_memory import SessionMemory, MetricSnapshot
+from server.phi_predictor import PhiPredictor
+from server.phi_adaptive_controller import PhiAdaptiveController, AdaptiveConfig, AdaptiveMode
 
 print("=" * 70)
 print("Feature 012: Predictive Phi-Adaptation - Quick Validation")

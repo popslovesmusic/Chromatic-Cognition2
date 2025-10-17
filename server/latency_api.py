@@ -11,8 +11,8 @@ import asyncio
 import json
 import time
 
-from latency_manager import LatencyManager
-from latency_frame import LatencyFrame
+from .latency_manager import LatencyManager
+from .latency_frame import LatencyFrame
 
 
 # Initialize manager (will be set by main app)
