@@ -1,0 +1,308 @@
+{
+  "version": "1.1.0",
+  "status": "planning",
+  "last_updated": "2025-10-17",
+  "target_release": "Q2 2026",
+  "phases": [
+    {
+      "id": 1,
+      "name": "Foundation & Maintenance",
+      "weeks": "1-4",
+      "status": "active",
+      "progress_percent": 100,
+      "milestones": ["M1"]
+    },
+    {
+      "id": 2,
+      "name": "Core Enhancements",
+      "weeks": "5-12",
+      "status": "planning",
+      "progress_percent": 0,
+      "milestones": ["M2"]
+    },
+    {
+      "id": 3,
+      "name": "Plugin Architecture",
+      "weeks": "13-20",
+      "status": "planning",
+      "progress_percent": 0,
+      "milestones": ["M3"]
+    },
+    {
+      "id": 4,
+      "name": "Scientific Tools",
+      "weeks": "21-28",
+      "status": "planning",
+      "progress_percent": 0,
+      "milestones": ["M4"]
+    },
+    {
+      "id": 5,
+      "name": "Polish & Release",
+      "weeks": "29-32",
+      "status": "planning",
+      "progress_percent": 0,
+      "milestones": ["M5"]
+    }
+  ],
+  "features": [
+    {
+      "id": "A-001",
+      "name": "AVX-512 optimization",
+      "priority": "P1",
+      "phase": 2,
+      "status": "planning",
+      "effort_weeks": 3,
+      "agent": "Performance",
+      "description": "Implement AVX-512 SIMD instructions for Φ-matrix computation"
+    },
+    {
+      "id": "A-002",
+      "name": "Latency reduction (< 5ms)",
+      "priority": "P1",
+      "phase": 2,
+      "status": "planning",
+      "effort_weeks": 4,
+      "agent": "Performance",
+      "description": "Reduce total pipeline latency below 5ms"
+    },
+    {
+      "id": "A-003",
+      "name": "Enhanced D-ASE filtering",
+      "priority": "P2",
+      "phase": 2,
+      "status": "planning",
+      "effort_weeks": 3,
+      "agent": "Audio",
+      "description": "Adaptive filtering with real-time adjustment"
+    },
+    {
+      "id": "A-004",
+      "name": "WebSocket compression",
+      "priority": "P2",
+      "phase": 2,
+      "status": "planning",
+      "effort_weeks": 2,
+      "agent": "Network",
+      "description": "Compress WebSocket metrics streaming"
+    },
+    {
+      "id": "A-005",
+      "name": "Multi-channel audio",
+      "priority": "P2",
+      "phase": 2,
+      "status": "planning",
+      "effort_weeks": 4,
+      "agent": "Audio",
+      "description": "Support up to 8 audio channels"
+    },
+    {
+      "id": "A-006",
+      "name": "Plugin API specification",
+      "priority": "P1",
+      "phase": 3,
+      "status": "planning",
+      "effort_weeks": 2,
+      "agent": "Architecture",
+      "description": "Define plugin interface and lifecycle"
+    },
+    {
+      "id": "A-007",
+      "name": "Plugin loader",
+      "priority": "P2",
+      "phase": 3,
+      "status": "planning",
+      "effort_weeks": 3,
+      "agent": "Architecture",
+      "description": "Dynamic plugin loading and unloading"
+    },
+    {
+      "id": "A-008",
+      "name": "Example plugins",
+      "priority": "P2",
+      "phase": 3,
+      "status": "planning",
+      "effort_weeks": 2,
+      "agent": "Community",
+      "description": "Reference plugins for developers"
+    },
+    {
+      "id": "A-009",
+      "name": "Plugin sandboxing",
+      "priority": "P3",
+      "phase": 3,
+      "status": "backlog",
+      "effort_weeks": 3,
+      "agent": "Security",
+      "description": "Isolate plugins for security"
+    },
+    {
+      "id": "A-010",
+      "name": "Plugin marketplace",
+      "priority": "P3",
+      "phase": 3,
+      "status": "backlog",
+      "effort_weeks": 4,
+      "agent": "Community",
+      "description": "Central plugin discovery and distribution"
+    },
+    {
+      "id": "A-011",
+      "name": "Reproducible experiments",
+      "priority": "P1",
+      "phase": 4,
+      "status": "planning",
+      "effort_weeks": 3,
+      "agent": "Science",
+      "description": "Framework for reproducible Φ-analysis studies"
+    },
+    {
+      "id": "A-012",
+      "name": "Statistical testing",
+      "priority": "P2",
+      "phase": 4,
+      "status": "planning",
+      "effort_weeks": 2,
+      "agent": "Science",
+      "description": "Statistical significance tests for Φ-metrics"
+    },
+    {
+      "id": "A-013",
+      "name": "Scientific export",
+      "priority": "P3",
+      "phase": 4,
+      "status": "backlog",
+      "effort_weeks": 2,
+      "agent": "Science",
+      "description": "Export to HDF5, MATLAB, R formats"
+    },
+    {
+      "id": "A-014",
+      "name": "Enhanced visualization",
+      "priority": "P3",
+      "phase": 4,
+      "status": "backlog",
+      "effort_weeks": 3,
+      "agent": "UI",
+      "description": "Advanced Φ-matrix visualization tools"
+    }
+  ],
+  "milestones": [
+    {
+      "id": "M1",
+      "name": "Maintenance Infrastructure",
+      "week": 4,
+      "status": "completed",
+      "exit_criteria": [
+        "Automated weekly checks active",
+        "Regression harness operational",
+        "Deprecation policy enforced",
+        "Performance baseline captured",
+        "100% test pass rate",
+        "< 5% performance variance from v1.0",
+        "Weekly CI job success rate ≥ 90%"
+      ],
+      "completed_date": "2025-10-17"
+    },
+    {
+      "id": "M2",
+      "name": "Performance Sprint Complete",
+      "week": 12,
+      "status": "planning",
+      "exit_criteria": [
+        "Latency < 5ms achieved",
+        "AVX-512 acceleration active",
+        "Multi-channel support live",
+        "Benchmarks show 30% throughput gain",
+        "All P1 performance features merged",
+        "No performance regressions vs v1.0",
+        "Documentation updated"
+      ]
+    },
+    {
+      "id": "M3",
+      "name": "Plugin System Beta",
+      "week": 20,
+      "status": "planning",
+      "exit_criteria": [
+        "Plugin API stable (v1.0)",
+        "≥3 example plugins available",
+        "Developer SDK published",
+        "Community feedback collected",
+        "External developers can create plugins",
+        "Plugin isolation validated",
+        "API documentation complete"
+      ]
+    },
+    {
+      "id": "M4",
+      "name": "Scientific Validation",
+      "week": 28,
+      "status": "planning",
+      "exit_criteria": [
+        "Reproducible experiments validated",
+        "Statistical methods peer-reviewed",
+        "Export formats working",
+        "Validation paper submitted",
+        "Reproducibility study complete",
+        "Data export verified",
+        "Methods documented"
+      ]
+    },
+    {
+      "id": "M5",
+      "name": "v1.1.0 GA Release",
+      "week": 32,
+      "status": "planning",
+      "exit_criteria": [
+        "Beta testing complete (≥50 users)",
+        "Migration guide published",
+        "Release artifacts signed",
+        "GitHub release created",
+        "All acceptance criteria met",
+        "Zero critical bugs",
+        "Documentation coverage 100%"
+      ]
+    }
+  ],
+  "metrics": {
+    "test_coverage_percent": 87,
+    "test_coverage_target": 90,
+    "doc_coverage_percent": 92,
+    "doc_coverage_target": 95,
+    "community_contributors": 2,
+    "community_contributors_target": 10,
+    "plugin_ecosystem_size": 0,
+    "plugin_ecosystem_target": 15
+  },
+  "risks": [
+    {
+      "id": "R1",
+      "description": "AVX-512 unavailable on target hardware",
+      "likelihood": "medium",
+      "impact": "high",
+      "mitigation": "Fallback to AVX2, runtime detection"
+    },
+    {
+      "id": "R2",
+      "description": "Plugin API instability",
+      "likelihood": "medium",
+      "impact": "medium",
+      "mitigation": "Extensive beta testing, versioning"
+    },
+    {
+      "id": "R3",
+      "description": "Performance regression",
+      "likelihood": "low",
+      "impact": "high",
+      "mitigation": "Continuous benchmarking, alerts"
+    },
+    {
+      "id": "R4",
+      "description": "Community adoption low",
+      "likelihood": "medium",
+      "impact": "low",
+      "mitigation": "Early engagement, clear examples"
+    }
+  ]
+}

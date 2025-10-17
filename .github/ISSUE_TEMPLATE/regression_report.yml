@@ -1,0 +1,154 @@
+name: Regression Report
+description: Report a regression (something that worked before but is now broken)
+title: "[Regression]: "
+labels: ["regression", "bug", "high-priority"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A regression is when functionality that previously worked is now broken.
+        Please provide as much detail as possible to help us identify when the regression was introduced.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Regression Description
+      description: What functionality is now broken?
+      placeholder: Feature X stopped working...
+    validations:
+      required: true
+
+  - type: input
+    id: working-version
+    attributes:
+      label: Last Working Version
+      description: What was the last version where this worked correctly?
+      placeholder: e.g., v1.0.0, commit abc1234
+    validations:
+      required: true
+
+  - type: input
+    id: broken-version
+    attributes:
+      label: First Broken Version
+      description: What is the first version where this is broken?
+      placeholder: e.g., v1.1.0-beta, main branch
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Detailed steps to reproduce the regression
+      placeholder: |
+        1. Set up environment with...
+        2. Execute command...
+        3. Observe failure...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior (Previous)
+      description: What happened in the working version?
+      placeholder: Previously, this would...
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior (Current)
+      description: What happens in the broken version?
+      placeholder: Now, this happens instead...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: regression-type
+    attributes:
+      label: Regression Type
+      description: What type of regression is this?
+      options:
+        - Functional (feature broken)
+        - Performance (slower than before)
+        - API (interface changed unexpectedly)
+        - Security (new vulnerability introduced)
+        - Compatibility (works in fewer environments)
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: git-bisect
+    attributes:
+      label: Git Bisect Results
+      description: If you've run git bisect to find the problematic commit, paste the results
+      render: shell
+      placeholder: |
+        $ git bisect start
+        $ git bisect bad HEAD
+        $ git bisect good v1.0.0
+        ...
+
+  - type: textarea
+    id: test-baseline
+    attributes:
+      label: Test Comparison
+      description: Compare test results or benchmarks between working and broken versions
+      render: shell
+      placeholder: |
+        # Working version (v1.0.0)
+        Tests: 150 passed, 0 failed
+        Latency: 8.2ms
+
+        # Broken version (main)
+        Tests: 148 passed, 2 failed
+        Latency: 12.5ms
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error Logs / Output
+      description: Paste any relevant error messages or logs
+      render: shell
+      placeholder: Paste logs here...
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Any other information that might help identify the cause
+      placeholder: I noticed this started after PR #123 was merged...
+
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact
+      description: How severe is this regression?
+      options:
+        - Critical (blocks major functionality)
+        - High (significant feature broken)
+        - Medium (minor feature broken)
+        - Low (edge case or workaround available)
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: verification
+    attributes:
+      label: Verification
+      description: Please confirm the following
+      options:
+        - label: I have verified this worked in a previous version
+          required: true
+        - label: I have confirmed this is broken in the current version
+          required: true
+        - label: I have searched existing issues and this regression has not been reported
+          required: true
+        - label: I can reproduce this consistently
+          required: false

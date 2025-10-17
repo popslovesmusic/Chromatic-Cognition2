@@ -67,8 +67,8 @@ pip install soundlab-dase-engine==1.0.0
 ### Docker
 
 ```bash
-docker pull soundlab/phi-matrix:1.0
-docker run -p 8000:8000 soundlab/phi-matrix:1.0
+docker pull soundlab/phi-matrix:1.0.0
+docker run -p 8000:8000 soundlab/phi-matrix:1.0.0
 ```
 
 ### From Source
@@ -76,7 +76,7 @@ docker run -p 8000:8000 soundlab/phi-matrix:1.0
 ```bash
 git clone https://github.com/soundlab/phi-matrix
 cd phi-matrix
-git checkout v1.0
+git checkout v1.0.0
 make setup
 make build
 ```
@@ -118,9 +118,9 @@ Download SHA256SUMS and signature from release page:
 
 ```bash
 sha256sum -c SHA256SUMS
-cosign verify-blob soundlab-dase-engine-1.0.0.whl \
-  --signature soundlab-dase-engine-1.0.0.whl.sig \
-  --certificate soundlab-dase-engine-1.0.0.whl.pem
+cosign verify-blob soundlab_dase_engine-1.0.0-*.whl \
+  --signature soundlab_dase_engine-1.0.0-*.whl.sig \
+  --certificate soundlab_dase_engine-1.0.0-*.whl.pem
 ```
 
 ## Upgrade Guide
@@ -194,6 +194,7 @@ Tested on Intel i7-12700K, 32GB RAM:
 - **[Security & Privacy](docs/PRIVACY.md)** - Security best practices
 - **[Threat Model](docs/threat_model.md)** - Security analysis
 - **[Incident Response](docs/incident_response.md)** - Security incident playbook
+- **[Release Announcement](docs/releases/v1.0.md)** - Step 40 go-live summary
 
 ## Support & Community
 

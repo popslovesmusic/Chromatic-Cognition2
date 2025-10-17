@@ -1,0 +1,19 @@
+{
+  "version": "1.0.0",
+  "capture_date": "2025-10-17",
+  "git_commit": "de854de",
+  "description": "Baseline metrics captured from v1.0.0 release",
+  "captured_by": "Feature 026 regression harness",
+  "baseline_files": [
+    "phi_depth_v1.0.json",
+    "coherence_v1.0.json",
+    "dase_fft_v1.0.json",
+    "dase_dissipation_v1.0.json",
+    "api_healthz_v1.0.json",
+    "api_metrics_v1.0.json",
+    "performance_latency_v1.0.json",
+    "performance_throughput_v1.0.json",
+    "config_defaults_v1.0.json"
+  ],
+  "notes": "These baselines represent the expected behavior from v1.0.0. Regression tests should pass with ±5% tolerance on performance metrics."
+}

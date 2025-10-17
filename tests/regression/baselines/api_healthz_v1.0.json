@@ -1,0 +1,20 @@
+{
+  "version": "1.0.0",
+  "captured_date": "2025-10-17",
+  "required_keys": [
+    "status",
+    "version",
+    "uptime"
+  ],
+  "optional_keys": [
+    "phi_matrix_initialized",
+    "hardware_connected"
+  ],
+  "example_response": {
+    "status": "healthy",
+    "version": "1.0.0",
+    "uptime": 3600,
+    "phi_matrix_initialized": true,
+    "hardware_connected": false
+  }
+}

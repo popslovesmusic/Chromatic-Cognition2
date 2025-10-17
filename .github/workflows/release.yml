@@ -293,7 +293,7 @@ jobs:
           ### Python Package
 
           \`\`\`bash
-          pip install soundlab-dase-engine-${VERSION}.whl
+          pip install soundlab-dase-engine==${VERSION}
           \`\`\`
 
           ### Docker

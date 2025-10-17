@@ -6,7 +6,8 @@ __pycache__/
 *.egg
 *.egg-info/
 dist/
-build/
+build/*
+!build/version.txt
 *.whl
 .Python
 pip-log.txt

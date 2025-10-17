@@ -8,11 +8,20 @@ Requirements:
 - SC-005: python -c "import dase_engine; print(dase_engine.hasAVX2())" returns True
 """
 
-import pytest
+import os
 import subprocess
 import sys
-import os
 from pathlib import Path
+
+import pytest
+
+try:
+    import tomllib  # Python 3.11+
+except ModuleNotFoundError:  # pragma: no cover - fallback for older interpreters
+    import tomli as tomllib  # type: ignore
+
+
+EXPECTED_VERSION = "1.0.0"
 
 
 class TestReleaseArtifacts:
@@ -21,19 +30,32 @@ class TestReleaseArtifacts:
     def test_version_file_exists(self):
         """Test that version file exists"""
         version_file = Path('build/version.txt')
-        # Note: May not exist in test environment
-        # assert version_file.exists()
+        assert version_file.exists(), "Missing build/version.txt"
+        contents = version_file.read_text().strip()
+        assert contents == EXPECTED_VERSION, f"Expected version {EXPECTED_VERSION}, got {contents}"
 
     def test_changelog_exists(self):
         """Test that CHANGELOG.md exists"""
         changelog = Path('CHANGELOG.md')
-        # Will be generated during release
-        # assert changelog.exists()
+        assert changelog.exists(), "CHANGELOG.md must be present for release"
+        text = changelog.read_text()
+        assert EXPECTED_VERSION in text
 
     def test_release_notes_exist(self):
         """Test that RELEASE_NOTES.md exists"""
         release_notes = Path('RELEASE_NOTES.md')
         assert release_notes.exists()
+        assert EXPECTED_VERSION in release_notes.read_text()
+
+    def test_pyproject_version(self):
+        pyproject = Path('pyproject.toml')
+        assert pyproject.exists(), "pyproject.toml missing"
+        data = tomllib.loads(pyproject.read_text())
+        assert data['project']['version'] == EXPECTED_VERSION
+
+    def test_release_notes_linked(self):
+        release_notes = Path('RELEASE_NOTES.md').read_text()
+        assert 'docs/releases/v1.0.md' in release_notes
 
 
 class TestInstallation:
@@ -124,6 +146,9 @@ class TestDocumentation:
         for doc in required_docs:
             doc_file = docs_dir / doc
             assert doc_file.exists(), f"Missing documentation: {doc}"
+
+        release_announcement = docs_dir / 'releases' / 'v1.0.md'
+        assert release_announcement.exists(), "Release announcement docs/releases/v1.0.md is required"
 
     def test_release_notes_exist(self):
         """Test RELEASE_NOTES.md exists"""

@@ -8,8 +8,8 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "soundlab-phi-matrix"
-version = "0.9.0-rc1"
+name = "soundlab-dase-engine"
+version = "1.0.0"
 description = "Soundlab Φ-Matrix: Real-time audio synthesis with Φ-based adaptive modulation and D-ASE analog engine"
 readme = "README.md"
 requires-python = ">=3.9"

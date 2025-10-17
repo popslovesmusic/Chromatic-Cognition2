@@ -1,0 +1,134 @@
+name: Feature Request
+description: Suggest a new feature or enhancement
+title: "[Feature]: "
+labels: ["enhancement", "needs-triage"]
+assignees: []
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a new feature! Please describe it in detail below.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: What problem would this feature solve? Is your feature request related to a problem?
+      placeholder: I'm frustrated when...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: Describe the solution you'd like
+      placeholder: I would like to see...
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Describe any alternative solutions or features you've considered
+      placeholder: I also considered...
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      description: How important is this feature to you?
+      options:
+        - Critical (blocking my work)
+        - High (important for my use case)
+        - Medium (would be nice to have)
+        - Low (minor improvement)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Feature Category
+      description: Which area does this feature relate to?
+      options:
+        - Core Engine (Φ-matrix, D-ASE)
+        - Performance
+        - Hardware Integration
+        - API / WebSocket
+        - Plugin System
+        - Documentation
+        - Security
+        - Testing
+        - DevOps / CI
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-cases
+    attributes:
+      label: Use Cases
+      description: Describe specific use cases or scenarios where this feature would be useful
+      placeholder: |
+        1. When doing X, this would help by...
+        2. Another scenario is...
+
+  - type: textarea
+    id: examples
+    attributes:
+      label: Examples
+      description: Provide code examples, mockups, or references to similar features
+      placeholder: |
+        # Example usage
+        ```python
+        # Show how the feature would be used
+        ```
+
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Implementation Ideas
+      description: Do you have ideas about how this could be implemented? (optional)
+      placeholder: This could be implemented by...
+
+  - type: dropdown
+    id: breaking
+    attributes:
+      label: Breaking Change
+      description: Would this require breaking changes to the API?
+      options:
+        - "No"
+        - "Yes"
+        - "Unsure"
+    validations:
+      required: true
+
+  - type: textarea
+    id: roadmap
+    attributes:
+      label: Roadmap Alignment
+      description: Does this align with any items in the roadmap? Reference agents or phases.
+      placeholder: e.g., Related to A-006 Plugin API in Phase 3
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Contribution
+      description: Would you be willing to contribute to implementing this feature?
+      options:
+        - label: I am willing to submit a pull request for this feature
+          required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-submission Checklist
+      description: Please confirm the following
+      options:
+        - label: I have searched existing issues and this feature has not been requested before
+          required: true
+        - label: I have provided all required information above
+          required: true

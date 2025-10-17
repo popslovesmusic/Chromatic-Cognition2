@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: GitHub Discussions
+    url: https://github.com/soundlab/phi-matrix/discussions
+    about: Ask questions and discuss ideas with the community
+  - name: Documentation
+    url: https://docs.soundlab.example.com
+    about: Browse the official documentation
+  - name: Security Vulnerability
+    url: https://github.com/soundlab/phi-matrix/security/advisories/new
+    about: Report a security vulnerability privately

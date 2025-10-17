@@ -1,0 +1,18 @@
+{
+  "version": "1.0.0",
+  "captured_date": "2025-10-17",
+  "required_keys": {
+    "sample_rate": "int",
+    "block_size": "int",
+    "phi_depth_threshold": "float",
+    "enable_hardware": "bool"
+  },
+  "default_values": {
+    "sample_rate": 48000,
+    "block_size": 512,
+    "phi_depth_threshold": 0.3,
+    "enable_hardware": false,
+    "log_level": "INFO",
+    "websocket_port": 8000
+  }
+}
