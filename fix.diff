@@ -1,12 +1,38 @@
  (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
 diff --git a/.gitignore b/.gitignore
-new file mode 100644
-index 0000000000000000000000000000000000000000..7a60b85e148f80966a550e5ab6a762a907c69ca6
---- /dev/null
+index 1bc46e32bd6a4056b16ec9d0d99d75d7e61c0026..76c6b6691e3f3713ad62d87c1b7887d2e4a108c0 100644
+--- a/.gitignore
 +++ b/.gitignore
-@@ -0,0 +1,2 @@
-+__pycache__/
+@@ -1,28 +1,29 @@
+ # Python
+ __pycache__/
+ *.py[cod]
 +*.pyc
+ *$py.class
+ *.so
+ *.egg
+ *.egg-info/
+ dist/
+ build/
+ *.whl
+ .Python
+ pip-log.txt
+ pip-delete-this-directory.txt
+ .venv/
+ venv/
+ ENV/
+ env/
+ 
+ # Logs
+ logs/
+ *.log
+ *.csv
+ *.jsonl
+ *.gz
+ 
+ # Presets (optional - uncomment if you don't want to track user presets)
+ # presets/
+ 
 diff --git a/README.md b/README.md
 index 624e93f86dffda21d4859b16da92ef2cf2d75133..11a3472891703275f69285b0f7e52812dc4b0e36 100644
 GIT binary patch
@@ -135,12 +161,3508 @@ index 600f8da17e3e2484366f5b580cfe3bf4b0464ec7..4417463ef62cb817eec76af87cf2c491
    position: relative;
    cursor: pointer;
    background: radial-gradient(circle at 30% 30%, #2a2a2a, #070707);
-diff --git a/docs/soundlab-diagnostic-report.md b/docs/soundlab-diagnostic-report.md
+diff --git a/docs/master-vs-main-summary.md b/docs/master-vs-main-summary.md
 new file mode 100644
-index 0000000000000000000000000000000000000000..d36bc6a3ffa1e7dbd943c3d4258e38269ec0d868
+index 0000000000000000000000000000000000000000..f83ba3d09b6d0fbc58a7ee00f82191cd90a47ba8
 --- /dev/null
++++ b/docs/master-vs-main-summary.md
+@@ -0,0 +1,32 @@
++# master vs main diff summary
++
++This report compares the repository state at commit `640fad41df1ea4b1f66391efcb0e448663ed4452` (labeled `master`) against commit `da9a6244a989f5dccbe53c71da706dcbf0a30c17` (labeled `main`). The diff was generated with `git diff master..main`.
++
++## Diff statistics
++
++```
++ .gitignore                         |    1 +
++ README.md                          |  Bin 50 -> 376 bytes
++ apply-diff-safe.ps1                |   79 +++++
++ css/soundlab-controls.css          |   59 ++++
++ docs/soundlab-diagnostic-report.md |   97 +++++
++ docs/summary.md                    |   20 ++
++ fix.diff                           | 1618 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
++ js/soundlab-hybrid.js              |  156 +++++++++
++ js/soundlab-main.js                |   31 ++
++ partials/transport-controls.html   |   29 ++
++ report.diff                        |  107 ++++++
++ requirements.txt                   |    4 +
++ server/__init__.py                 |   10 +-
++ server/app.py                      |   99 ++++++
++ server/hybrid_node.py              |  374 ++++++++++++++++++++
++ static/js/soundlab-audio-engine.js |  545 ++++++++++++++++++++++++++++
++ 16 files changed, 3223 insertions(+), 6 deletions(-)
++```
++
++## Notes
++
++* The `fix.diff` artifact introduces the majority of the line delta (over 1,600 added lines).
++* Backend additions include `server/app.py`, `server/hybrid_node.py`, and updated package initialization.
++* Frontend changes add hybrid transport controls, styles, and client logic in `partials/transport-controls.html`, `css/soundlab-controls.css`, `js/soundlab-hybrid.js`, and `static/js/soundlab-audio-engine.js`.
++* Documentation updates touch the diagnostic report and introduce `docs/summary.md`.
+diff --git a/docs/master-vs-main.diff b/docs/master-vs-main.diff
+new file mode 100644
+index 0000000000000000000000000000000000000000..68c8fa8c7f78c6a6da21ee75fc594ca828855f8b
+--- /dev/null
++++ b/docs/master-vs-main.diff
+@@ -0,0 +1,3356 @@
++diff --git a/.gitignore b/.gitignore
++index 1bc46e3..76c6b66 100644
++--- a/.gitignore
+++++ b/.gitignore
++@@ -1,6 +1,7 @@
++ # Python
++ __pycache__/
++ *.py[cod]
+++*.pyc
++ *$py.class
++ *.so
++ *.egg
++diff --git a/README.md b/README.md
++index 624e93f..11a3472 100644
++Binary files a/README.md and b/README.md differ
++diff --git a/apply-diff-safe.ps1 b/apply-diff-safe.ps1
++new file mode 100644
++index 0000000..5987fda
++--- /dev/null
+++++ b/apply-diff-safe.ps1
++@@ -0,0 +1,79 @@
+++<#
+++.SYNOPSIS
+++Safely apply and auto-commit a Git patch (diff) file or inline text.
+++
+++.DESCRIPTION
+++- Verifies Git repository
+++- Creates backup branch
+++- Validates patch (dry-run + 3-way fallback)
+++- Applies patch
+++- Auto-stages and commits changes
+++#>
+++
+++param(
+++    [string]$PatchFile
+++)
+++
+++$ErrorActionPreference = "Stop"
+++
+++# Step 1: Verify inside Git repo
+++if (-not (git rev-parse --is-inside-work-tree 2>$null)) {
+++    Write-Host "ERROR: Not inside a Git repository." -ForegroundColor Red
+++    exit 1
+++}
+++
+++# Step 2: Move to repo root
+++$RepoRoot = git rev-parse --show-toplevel
+++Set-Location $RepoRoot
+++
+++# Step 3: Create backup branch
+++$Timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
+++$BackupBranch = "pre-patch-$Timestamp"
+++git branch $BackupBranch | Out-Null
+++Write-Host ("Backup branch created: {0}" -f $BackupBranch) -ForegroundColor Cyan
+++
+++# Step 4: Read diff (from file or piped input)
+++$TempPatch = New-TemporaryFile
+++if ($PatchFile -and (Test-Path $PatchFile)) {
+++    Get-Content -Raw $PatchFile | Out-File -Encoding utf8 $TempPatch
+++} else {
+++    $input | Out-File -Encoding utf8 $TempPatch
+++}
+++
+++# Step 5: Dry-run test
+++Write-Host "Checking patch applicability..." -ForegroundColor Yellow
+++git apply --check $TempPatch 2>$null
+++if ($LASTEXITCODE -ne 0) {
+++    Write-Host "Dry-run failed. Trying 3-way merge check..." -ForegroundColor Yellow
+++    git apply --3way --check $TempPatch 2>$null
+++    if ($LASTEXITCODE -ne 0) {
+++        Write-Host "Patch cannot be applied cleanly, even with 3-way merge." -ForegroundColor Red
+++        Write-Host ("Backup branch preserved: {0}" -f $BackupBranch)
+++        Remove-Item $TempPatch -Force
+++        exit 1
+++    }
+++}
+++
+++# Step 6: Apply patch
+++Write-Host "Applying patch..." -ForegroundColor Green
+++git apply --3way $TempPatch
+++
+++# Step 7: Stage and commit
+++Write-Host ""
+++Write-Host "Staging and committing changes..." -ForegroundColor Cyan
+++git add -A
+++$CommitMsg = "Applied diff safely - $Timestamp"
+++git commit -m "$CommitMsg"
+++
+++# Step 8: Summary
+++Write-Host ""
+++Write-Host "Patch applied and committed successfully." -ForegroundColor Green
+++Write-Host ("Commit message: {0}" -f $CommitMsg)
+++Write-Host ""
+++Write-Host "Git status:" -ForegroundColor Cyan
+++git status -s
+++Write-Host ""
+++Write-Host ("To undo, run: git switch {0}" -f $BackupBranch) -ForegroundColor Yellow
+++
+++# Cleanup
+++Remove-Item $TempPatch -Force
++diff --git a/css/soundlab-controls.css b/css/soundlab-controls.css
++index 600f8da..4417463 100644
++--- a/css/soundlab-controls.css
+++++ b/css/soundlab-controls.css
++@@ -85,6 +85,65 @@ kbd {
++   margin-top: 16px;
++ }
++ 
+++.hybrid-controls {
+++  display: flex;
+++  flex-wrap: wrap;
+++  align-items: center;
+++  gap: 16px;
+++  justify-content: space-between;
+++  margin-bottom: 12px;
+++}
+++
+++.hybrid-toggle {
+++  display: inline-flex;
+++  align-items: center;
+++  gap: 8px;
+++  font-size: 0.85rem;
+++  text-transform: uppercase;
+++  letter-spacing: 0.08em;
+++  color: var(--color-primary);
+++}
+++
+++.hybrid-toggle input[type='checkbox'] {
+++  width: 20px;
+++  height: 20px;
+++  accent-color: var(--color-highlight);
+++}
+++
+++.hybrid-field {
+++  min-width: 220px;
+++}
+++
+++.hybrid-field label {
+++  display: block;
+++  margin-bottom: 6px;
+++  font-size: 0.75rem;
+++  text-transform: uppercase;
+++  letter-spacing: 0.08em;
+++  color: var(--color-primary-soft);
+++}
+++
+++.hybrid-status {
+++  font-size: 0.85rem;
+++  color: var(--color-highlight);
+++  margin-bottom: 8px;
+++}
+++
+++.hybrid-metrics {
+++  display: flex;
+++  flex-wrap: wrap;
+++  gap: 12px;
+++  font-size: 0.8rem;
+++  color: var(--color-primary);
+++}
+++
+++.hybrid-metrics span {
+++  background: rgba(0, 246, 255, 0.08);
+++  border: 1px solid rgba(0, 246, 255, 0.25);
+++  border-radius: 999px;
+++  padding: 6px 12px;
+++}
+++
++ .knob-row {
++   display: grid;
++   grid-template-columns: repeat(3, minmax(0, 1fr));
++diff --git a/docs/soundlab-diagnostic-report.md b/docs/soundlab-diagnostic-report.md
++new file mode 100644
++index 0000000..156014c
++--- /dev/null
+++++ b/docs/soundlab-diagnostic-report.md
++@@ -0,0 +1,97 @@
+++# Soundlab Modular Diagnostics
+++
+++## 1. UI Element Audit
+++### Interactive inventory
+++| Element | Location | Bound handler | Notes |
+++| --- | --- | --- | --- |
+++| `#startBtn` | Transport controls partial | `initAudio()` click listener enables graph bootstrap and status messaging.【F:partials/transport-controls.html†L3-L60】【F:js/soundlab-events.js†L69-L75】 | Correctly disables itself after initialization and enables downstream actions.【F:js/soundlab-audio-core.js†L248-L259】 |
+++| `#generateBtn` | Transport controls partial | `generateTone()` click listener starts sine source and enables stop control.【F:partials/transport-controls.html†L11-L27】【F:js/soundlab-events.js†L69-L75】【F:js/soundlab-audio-core.js†L262-L289】 | Disabled until audio engine starts, preventing orphan presses.【F:js/soundlab-audio-core.js†L248-L257】 |
+++| `#stopBtn` | Transport controls partial | Composite click handler stops tone/file/Φ/image playback.【F:partials/transport-controls.html†L28-L47】【F:js/soundlab-events.js†L71-L75】 | Re-disabled after `stopAudio()`, but not after Φ auto-complete (see §3).【F:js/soundlab-audio-core.js†L338-L358】【F:js/soundlab-phi.js†L258-L285】 |
+++| `#loadBtn` / `#fileInput` | Transport controls partial | Button triggers hidden file input; `change` wired to `loadAudioFile()` with audio-context guard.【F:partials/transport-controls.html†L48-L69】【F:js/soundlab-events.js†L76-L80】【F:js/soundlab-audio-core.js†L291-L336】 | Status messaging steers users back to Start Audio if context missing.【F:js/soundlab-audio-core.js†L295-L305】 |
+++| `#loadImageBtn` / `#imageInput` | Transport controls partial | Loads image into canvas, reveals panel, primes status.【F:partials/transport-controls.html†L70-L99】【F:js/soundlab-events.js†L80-L84】【F:js/soundlab-image.js†L9-L62】 | Leaves Play button enabled even when audio context absent; playback simply no-ops (see §4). |
+++| `#playImageBtn` | Transport controls partial | Toggles between `startImagePlayback()` and `stopImagePlayback()` with status copy.【F:partials/transport-controls.html†L88-L99】【F:js/soundlab-events.js†L83-L84】【F:js/soundlab-image.js†L64-L115】 | Button label swaps on toggle; disabled until image present.【F:js/soundlab-image.js†L46-L55】 |
+++| Φ controls (`#phiMode`, `#baseFreq`, `#duration`, `#driveCurve`, `#frequencyRange`, `#runPhiBtn`, `#restoreParamsBtn`, `#diagnosticBtn`) | Φ panel partial | Mode runner reads values via `getParams()`; restore & diagnostic buttons wired to recovery/log routines.【F:partials/transport-controls.html†L101-L176】【F:js/soundlab-events.js†L84-L90】【F:js/soundlab-phi.js†L71-L337】【F:js/soundlab-utils.js†L39-L59】 | `#restoreParamsBtn` remains disabled until a Φ run captures state.【F:js/soundlab-phi.js†L266-L275】 |
+++| EQ & saturation knobs (`.knob`) | EQ/saturation partials | Mouse, keyboard, and focus handlers sync UI, logs, and audio params with readiness checks.【F:partials/eq-panel.html†L4-L16】【F:partials/saturation-panel.html†L4-L16】【F:js/soundlab-events.js†L110-L238】 | Prevents edits before engine start via `isEqReady()` messaging.【F:js/soundlab-audio-core.js†L205-L214】 |
+++| Image sonification controls (`#sonifyMode`, `#scanSpeed`, `#freqMin`, `#freqMax`) | Image panel partial | Slider updates live label; values consumed during playback per mode.【F:partials/image-sonification.html†L1-L36】【F:js/soundlab-events.js†L97-L101】【F:js/soundlab-image.js†L117-L330】 | Panel stays hidden until image loads, preserving layout integrity.【F:js/soundlab-image.js†L42-L55】 |
+++| Logging controls (`#clearLogBtn`, `#exportLogBtn`, `#exportJsonBtn`) | Log partial | Click handlers reset log or export CSV/JSON via Blob download.【F:partials/log-and-matrix.html†L3-L33】【F:js/soundlab-events.js†L103-L105】【F:js/soundlab-logging.js†L18-L144】 | Shortcut legend auto-populates from `data-shortcut` attributes.【F:js/soundlab-logging.js†L146-L164】 |
+++| Config dropdown `#configSelect` | Config loader partial | `change` handler fetches JSON, normalizes, and applies to UI/matrix.【F:partials/config-loader.html†L1-L8】【F:js/soundlab-events.js†L92-L95】【F:js/soundlab-config.js†L4-L142】 |
+++| Status displays (`#status`, `#statusTip`, `#shortcutLegend`, log counters) | Transport & log partials | Updated across modules to reflect lifecycle state.【F:partials/transport-controls.html†L101-L176】【F:partials/log-and-matrix.html†L3-L33】【F:js/soundlab-audio-core.js†L248-L359】【F:js/soundlab-logging.js†L48-L164】 | Provide user feedback for readiness, diagnostics, and logging. |
+++
+++### Findings
+++* All declared interactive elements are wired to handlers after partial loading; no orphaned IDs detected because `loadPartials()` awaits each include before binding events.【F:js/soundlab-main.js†L335-L364】【F:js/soundlab-events.js†L66-L107】
+++* Shortcut legend covers every control exposing a `data-shortcut`, ensuring accessibility parity between mouse and keyboard workflows.【F:js/soundlab-logging.js†L146-L164】
+++* Event registration assumes partial markup availability; if a new include fails without a fallback snippet, `document.getElementById(...).addEventListener` would throw. Consider null-guards or `querySelector` option chaining for future extensibility.【F:js/soundlab-events.js†L69-L107】【F:js/soundlab-main.js†L335-L349】
+++
+++## 2. Audio Graph Validation
+++### Observations
+++* `initAudio()` constructs a linear chain (source → EQ filters → waveshaper → gain → analyser → destination), seeds analyser buffers, and primes UI state.【F:js/soundlab-audio-core.js†L216-L260】
+++* `generateTone()`/`loadAudioFile()` rebuild upstream sources while reusing the shared processing chain via `ensureProcessingChain()`.【F:js/soundlab-audio-core.js†L262-L333】
+++* `stopAudio()` tears down active oscillator/buffer sources and restores transport controls, but leaves the processing chain hot for subsequent playback.【F:js/soundlab-audio-core.js†L338-L359】
+++
+++### Issues & recommendations
+++| Severity | Issue | Evidence | Recommendation |
+++| --- | --- | --- | --- |
+++| **High** | Saturation mix removes the dry signal entirely: the waveshaper curve is scaled by `params.mix/100`, so the default mix of `0` silences all audio traversing the chain.【F:js/soundlab-audio-core.js†L19-L106】 | Implement a parallel dry path or compute a crossfaded output (e.g., mix = 0 routes dry signal, mix = 100 fully wet). At minimum, default mix should be 100% until blending is supported. |
+++| Medium | `ensureProcessingChain()` repeatedly disconnects nodes on each call; while safe, it risks transient pops under load and omits context resume for suspended states.【F:js/soundlab-audio-core.js†L56-L92】 | Cache a flag to skip redundant disconnect/reconnect cycles and call `audioContext.resume()` inside `initAudio()` for Safari/Chrome autoplay policies. |
+++| Medium | `stopAudio()` does not call `setAudioPlaying(false)`, while Φ mode uses that flag. Divergent state tracking can desynchronize shared status helpers.【F:js/soundlab-audio-core.js†L338-L359】【F:js/soundlab-phi.js†L258-L285】 | Normalize on the exported setter when toggling playback so UI components share the same state source. |
+++
+++## 3. Φ Mode Dispatch and Recovery
+++### Observations
+++* `runPhiMode()` validates the audio graph, stops prior Φ synthesis, then branches across tone/AM/FM/interval/harmonic implementations that share envelope helpers and parameter sampling from `getParams()`.【F:js/soundlab-phi.js†L71-L256】【F:js/soundlab-utils.js†L39-L59】
+++* On completion, last-run parameters are cached and the restore button is enabled; `restoreLastParams()` hydrates form inputs and announces status.【F:js/soundlab-phi.js†L258-L313】
+++* `diagnosticParamsLog()` prints structured details to the console and echoes a concise summary in the status banner.【F:js/soundlab-phi.js†L316-L333】
+++
+++### Issues & recommendations
+++| Severity | Issue | Evidence | Recommendation |
+++| --- | --- | --- | --- |
+++| Medium | When a Φ run times out naturally, the stop button remains enabled even though synthesis is halted, inviting redundant presses.【F:js/soundlab-phi.js†L258-L285】 | Disable `#stopBtn` inside the timeout callback (and re-enable Generate) to keep transport UI truthful without relying on manual stop. |
+++| Medium | Parameter recovery is session-bound only; reloading the page clears `lastParams`, reducing Φ workflow continuity.【F:js/soundlab-phi.js†L10-L44】【F:js/soundlab-phi.js†L266-L275】 | Persist the last Φ payload into `localStorage` (with timestamp) and hydrate during initialization to survive reloads. |
+++| Low | `diagnosticParamsLog()` relies on the console for detail, offering no in-app history beyond transient status text.【F:js/soundlab-phi.js†L316-L333】 | Pipe diagnostic output into the existing logging panel or a dedicated diagnostics feed for traceability. |
+++
+++## 4. Image Sonification Workflow
+++### Observations
+++* Image loading scales artwork to ≤512 px, reveals the sonification panel, and populates metadata before asserting audio readiness.【F:js/soundlab-image.js†L9-L58】
+++* Playback toggles update button text and status messaging while dispatching to spectral, harmonic, FM, or additive renderers that interpret pixel data differently.【F:js/soundlab-image.js†L64-L330】
+++* Each renderer advances a column counter, calls `drawScanIndicator()`, and halts automatically at image bounds.【F:js/soundlab-image.js†L152-L343】
+++
+++### Issues & recommendations
+++| Severity | Issue | Evidence | Recommendation |
+++| --- | --- | --- | --- |
+++| Medium | Loading an image before the audio engine is started leaves `#playImageBtn` enabled, yet subsequent playback simply returns without user feedback when `audioContext` is null.【F:js/soundlab-image.js†L46-L75】 | Either defer enabling Play until `getAudioContext()` succeeds or display a status prompt when `startImagePlayback()` aborts due to a missing context. |
+++| Medium | FM mode allocates a persistent `GainNode` (`modGain`) that is never stored in `imageOscillators`, so `stopImagePlayback()` cannot disconnect it explicitly.【F:js/soundlab-image.js†L222-L277】 | Track auxiliary nodes alongside oscillators or add a dedicated cleanup routine to prevent stray graph attachments during repeated toggles. |
+++| Medium | Harmonic and additive modes spawn numerous short-lived oscillators without tracking references, so stopping playback midway cannot immediately halt grains in flight.【F:js/soundlab-image.js†L187-L330】 | Maintain a pool of active grains (oscillators & gains) to allow forced teardown when the user presses Stop. |
+++| Low | `freqMin`/`freqMax` inputs accept any numeric values without validation, which can lead to silent or aliasing-prone spectra.【F:js/soundlab-image.js†L122-L330】 | Clamp ranges inside playback routines and surface validation errors near the form fields. |
+++
+++## 5. Logging and Export Hooks
+++### Observations
+++* Parameter deltas, derived “force/work,” and running totals populate both the DOM log and downloadable CSV/JSON exports.【F:js/soundlab-logging.js†L18-L144】
+++* Clearing the log resets counters and redraws the placeholder; shortcut legend generation keeps keyboard hints in sync with UI changes.【F:js/soundlab-logging.js†L92-L164】
+++
+++### Issues & recommendations
+++| Severity | Issue | Evidence | Recommendation |
+++| --- | --- | --- | --- |
+++| Medium | Only knob interactions trigger logging; Φ mode actions, image scans, and transport events leave no audit trail.【F:js/soundlab-events.js†L110-L287】【F:js/soundlab-phi.js†L71-L333】【F:js/soundlab-image.js†L64-L330】 | Extend `logParameterChange()` usage (or introduce event-level logging) for Φ dispatch, image playback toggles, and transport state changes to achieve complete workflow coverage. |
+++| Low | CSV/JSON exports assume synchronous Blob support and do not report success/failure in the UI.【F:js/soundlab-logging.js†L99-L144】 | Update status text on export completion (or failure) so users receive inline confirmation without relying on browser download UI. |
+++
+++## 6. Modularization Integrity Check
+++### Observations
+++* `loadPartials()` fetches each include sequentially, falling back to baked-in HTML snippets when a request fails, guaranteeing required IDs exist before handler registration.【F:js/soundlab-main.js†L5-L369】
+++* Initialization order—partials, matrix seed, logging, then events—keeps dependencies satisfied (matrix grid exists before `updateMatrix()`, log elements exist before `initLogging()`, etc.).【F:js/soundlab-main.js†L352-L364】
+++* Audio state is centralized in `soundlab-audio-core.js`, and shared getters ensure other modules read from the same context instance.【F:js/soundlab-audio-core.js†L32-L55】
+++
+++### Issues & recommendations
+++| Severity | Issue | Evidence | Recommendation |
+++| --- | --- | --- | --- |
+++| Medium | Sequential partial loading can delay first paint and input readiness if any include stalls.【F:js/soundlab-main.js†L352-L356】 | Load partials in parallel (`Promise.all`) while preserving post-load initialization sequencing to reduce perceived startup latency. |
+++| Low | Event binding assumes fallback HTML parity; if a future partial omits an ID, initialization will throw and halt setup.【F:js/soundlab-events.js†L69-L107】 | Wrap each `getElementById` call with optional chaining or guard clauses to improve resilience during iterative modular refactors. |
+++
+++## 7. Summary Report
+++| Area | Issues Found | Severity | Impact | Suggested Fixes | Missing Tests | Confidence |
+++| --- | --- | --- | --- | --- | --- | --- |
+++| Audio core | Dry/wet mix bug; redundant reconnects; inconsistent playback state flag | High / Medium | Silence by default, potential pops, state drift | Introduce proper mix bus; memoize connections; standardize `setAudioPlaying` usage | No automated Web Audio regression suite | Medium |
+++| Φ mode | Stop button state drift; session-only recovery; diagnostic visibility | Medium / Low | Confusing transport UI; lost presets across reloads; limited traceability | Disable stop post-timeout; persist last params; surface diagnostics in UI | No preset dispatch tests | Medium |
+++| Image sonification | Audio-context gating; FM cleanup gap; granular teardown; input validation | Medium / Low | User confusion, lingering nodes, noisy stoppage, invalid spectra | Gate Play button via context; track auxiliary nodes; maintain grain pool; clamp frequency inputs | No mode-by-mode playback tests | Low |
+++| Logging | Coverage gaps; export feedback | Medium / Low | Incomplete audit trail; unclear export results | Log Φ/image/transport actions; update status after exports | No log export unit tests | Medium |
+++| Modularization | Sequential include loading; rigid binding assumptions | Medium / Low | Slower initial render; brittle future changes | Parallelize fetches; add binding guards | No integration smoke tests | Medium |
+++
+++**Overall:** The system is structurally sound, but the high-severity saturation mix defect and several medium-level lifecycle gaps merit prioritization. Confidence is medium because review relied on static analysis; targeted runtime tests (especially across browsers for Web Audio) are still required.
++\ No newline at end of file
++diff --git a/docs/summary.md b/docs/summary.md
++new file mode 100644
++index 0000000..1d52a54
++--- /dev/null
+++++ b/docs/summary.md
++@@ -0,0 +1,20 @@
+++# Soundlab Documentation Summary
+++
+++## Functional Element Map Highlights
+++- Catalogs all interactive controls, hidden inputs, and status displays in `soundlab_v1.html` after modularization.
+++- Groups UI pieces into transport/Φ controls, EQ and saturation panels, image sonification workspace, and visualization/logging tools.
+++- Records linked stylesheets, HTML partials, and JavaScript modules to verify dependencies are intact.
+++- Notes that initialization chains (`initializeSoundlab`) and key module exports remain connected with no missing elements.
+++
+++## Modularization Validation Overview
+++- Describes the manual verification pass that exercised loading, playback, synthesis, visualizers, and logging in the modular build.
+++- Confirms asynchronous partial loading preserves initialization order and shared audio state across modules.
+++- Verifies hidden inputs and keyboard shortcuts still function and that no runtime errors appeared during testing.
+++- Concludes the modularized interface preserves full functionality relative to the original monolithic page.
+++
+++## Key Functions and Their Roles
+++- `initializeSoundlab()` sequences partial loading, audio setup, and event wiring so the modular UI boots in the correct order.
+++- `initAudio()`, `generateTone()`, and `stopAudio()` maintain the core Web Audio graph, covering start-up, tone creation, and teardown.
+++- `runPhiMode()` dispatches Φ generator presets, while `restoreLastParams()` and `diagnosticParamsLog()` recover and inspect recent settings.
+++- `toggleImagePlayback()` coordinates spectral, harmonic, FM, and additive scans for the image-to-sound workflow.
+++- `logParameterChange()` and `initLogging()` capture interface actions, refresh the on-screen log, and expose export hooks.
++diff --git a/fix.diff b/fix.diff
++new file mode 100644
++index 0000000..d7e1c80
++--- /dev/null
+++++ b/fix.diff
++@@ -0,0 +1,1618 @@
+++ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
+++diff --git a/.gitignore b/.gitignore
+++new file mode 100644
+++index 0000000000000000000000000000000000000000..7a60b85e148f80966a550e5ab6a762a907c69ca6
+++--- /dev/null
++++++ b/.gitignore
+++@@ -0,0 +1,2 @@
++++__pycache__/
++++*.pyc
+++diff --git a/README.md b/README.md
+++index 624e93f86dffda21d4859b16da92ef2cf2d75133..11a3472891703275f69285b0f7e52812dc4b0e36 100644
+++GIT binary patch
+++literal 376
+++zcmXYru}%Xq5Jb1O#6PT*HpxX)C?#n~0Rllpdyc)jv*Pob^<FOg5TC;*0Y0EuX?8|4
+++zdf#6QK-fVK0t^FKPzc~)RXv6dQvGI!tGb3OFklu7yn8=N@c6)<@M#S0RMd(Z)3)u=
+++zmfqx$F{En7h$}&%w=oC}l(ek%qGmh?$C9v+oJrO;=WRV)t%M?5Kkpdx(i6VY@tNI;
+++z6e;=4At|;~*)~mNXJgMrw>O*3rkP69|1!0hc_JyOwf&EIKV#lj;EwRHUt&=qJA~Bz
+++zF($Q%cr3Wz)zEQILdj8;l~*|UCEDb1_jtg8RDvrw^&t{k=P2vE^Z9{=N102V4e75y
+++W7bQtH;=q24Rs$y-v$slRZGHd|-+l4`
+++
+++delta 5
+++McmeytWHiAD00zwg?*IS*
+++
+++diff --git a/css/soundlab-controls.css b/css/soundlab-controls.css
+++index 600f8da17e3e2484366f5b580cfe3bf4b0464ec7..4417463ef62cb817eec76af87cf2c49165bee248 100644
+++--- a/css/soundlab-controls.css
++++++ b/css/soundlab-controls.css
+++@@ -63,50 +63,109 @@ kbd {
+++   gap: 14px;
+++ }
+++ 
+++ .phi-field label {
+++   display: block;
+++   margin-bottom: 6px;
+++   font-size: 0.8rem;
+++   text-transform: uppercase;
+++   letter-spacing: 1px;
+++   color: var(--color-primary-soft);
+++ }
+++ 
+++ .phi-field input,
+++ .phi-field select {
+++   width: 100%;
+++ }
+++ 
+++ .phi-actions {
+++   display: flex;
+++   gap: 12px;
+++   flex-wrap: wrap;
+++   justify-content: center;
+++   margin-top: 16px;
+++ }
+++ 
++++.hybrid-controls {
++++  display: flex;
++++  flex-wrap: wrap;
++++  align-items: center;
++++  gap: 16px;
++++  justify-content: space-between;
++++  margin-bottom: 12px;
++++}
++++
++++.hybrid-toggle {
++++  display: inline-flex;
++++  align-items: center;
++++  gap: 8px;
++++  font-size: 0.85rem;
++++  text-transform: uppercase;
++++  letter-spacing: 0.08em;
++++  color: var(--color-primary);
++++}
++++
++++.hybrid-toggle input[type='checkbox'] {
++++  width: 20px;
++++  height: 20px;
++++  accent-color: var(--color-highlight);
++++}
++++
++++.hybrid-field {
++++  min-width: 220px;
++++}
++++
++++.hybrid-field label {
++++  display: block;
++++  margin-bottom: 6px;
++++  font-size: 0.75rem;
++++  text-transform: uppercase;
++++  letter-spacing: 0.08em;
++++  color: var(--color-primary-soft);
++++}
++++
++++.hybrid-status {
++++  font-size: 0.85rem;
++++  color: var(--color-highlight);
++++  margin-bottom: 8px;
++++}
++++
++++.hybrid-metrics {
++++  display: flex;
++++  flex-wrap: wrap;
++++  gap: 12px;
++++  font-size: 0.8rem;
++++  color: var(--color-primary);
++++}
++++
++++.hybrid-metrics span {
++++  background: rgba(0, 246, 255, 0.08);
++++  border: 1px solid rgba(0, 246, 255, 0.25);
++++  border-radius: 999px;
++++  padding: 6px 12px;
++++}
++++
+++ .knob-row {
+++   display: grid;
+++   grid-template-columns: repeat(3, minmax(0, 1fr));
+++   gap: 18px;
+++ }
+++ 
+++ .knob-container {
+++   text-align: center;
+++ }
+++ 
+++ .knob-label {
+++   font-size: 0.75rem;
+++   margin-bottom: 6px;
+++   text-transform: uppercase;
+++   letter-spacing: 1px;
+++   color: var(--color-primary-soft);
+++ }
+++ 
+++ .knob {
+++   width: 80px;
+++   height: 80px;
+++   margin: 0 auto 8px;
+++   position: relative;
+++   cursor: pointer;
+++   background: radial-gradient(circle at 30% 30%, #2a2a2a, #070707);
+++diff --git a/docs/soundlab-diagnostic-report.md b/docs/soundlab-diagnostic-report.md
+++new file mode 100644
+++index 0000000000000000000000000000000000000000..d36bc6a3ffa1e7dbd943c3d4258e38269ec0d868
+++--- /dev/null
++++++ b/docs/soundlab-diagnostic-report.md
+++@@ -0,0 +1,97 @@
++++# Soundlab Modular Diagnostics
++++
++++## 1. UI Element Audit
++++### Interactive inventory
++++| Element | Location | Bound handler | Notes |
++++| --- | --- | --- | --- |
++++| `#startBtn` | Transport controls partial | `initAudio()` click listener enables graph bootstrap and status messaging.【F:partials/transport-controls.html†L3-L60】【F:js/soundlab-events.js†L69-L75】 | Correctly disables itself after initialization and enables downstream actions.【F:js/soundlab-audio-core.js†L248-L259】 |
++++| `#generateBtn` | Transport controls partial | `generateTone()` click listener starts sine source and enables stop control.【F:partials/transport-controls.html†L11-L27】【F:js/soundlab-events.js†L69-L75】【F:js/soundlab-audio-core.js†L262-L289】 | Disabled until audio engine starts, preventing orphan presses.【F:js/soundlab-audio-core.js†L248-L257】 |
++++| `#stopBtn` | Transport controls partial | Composite click handler stops tone/file/Φ/image playback.【F:partials/transport-controls.html†L28-L47】【F:js/soundlab-events.js†L71-L75】 | Re-disabled after `stopAudio()`, but not after Φ auto-complete (see §3).【F:js/soundlab-audio-core.js†L338-L358】【F:js/soundlab-phi.js†L258-L285】 |
++++| `#loadBtn` / `#fileInput` | Transport controls partial | Button triggers hidden file input; `change` wired to `loadAudioFile()` with audio-context guard.【F:partials/transport-controls.html†L48-L69】【F:js/soundlab-events.js†L76-L80】【F:js/soundlab-audio-core.js†L291-L336】 | Status messaging steers users back to Start Audio if context missing.【F:js/soundlab-audio-core.js†L295-L305】 |
++++| `#loadImageBtn` / `#imageInput` | Transport controls partial | Loads image into canvas, reveals panel, primes status.【F:partials/transport-controls.html†L70-L99】【F:js/soundlab-events.js†L80-L84】【F:js/soundlab-image.js†L9-L62】 | Leaves Play button enabled even when audio context absent; playback simply no-ops (see §4). |
++++| `#playImageBtn` | Transport controls partial | Toggles between `startImagePlayback()` and `stopImagePlayback()` with status copy.【F:partials/transport-controls.html†L88-L99】【F:js/soundlab-events.js†L83-L84】【F:js/soundlab-image.js†L64-L115】 | Button label swaps on toggle; disabled until image present.【F:js/soundlab-image.js†L46-L55】 |
++++| Φ controls (`#phiMode`, `#baseFreq`, `#duration`, `#driveCurve`, `#frequencyRange`, `#runPhiBtn`, `#restoreParamsBtn`, `#diagnosticBtn`) | Φ panel partial | Mode runner reads values via `getParams()`; restore & diagnostic buttons wired to recovery/log routines.【F:partials/transport-controls.html†L101-L176】【F:js/soundlab-events.js†L84-L90】【F:js/soundlab-phi.js†L71-L337】【F:js/soundlab-utils.js†L39-L59】 | `#restoreParamsBtn` remains disabled until a Φ run captures state.【F:js/soundlab-phi.js†L266-L275】 |
++++| EQ & saturation knobs (`.knob`) | EQ/saturation partials | Mouse, keyboard, and focus handlers sync UI, logs, and audio params with readiness checks.【F:partials/eq-panel.html†L4-L16】【F:partials/saturation-panel.html†L4-L16】【F:js/soundlab-events.js†L110-L238】 | Prevents edits before engine start via `isEqReady()` messaging.【F:js/soundlab-audio-core.js†L205-L214】 |
++++| Image sonification controls (`#sonifyMode`, `#scanSpeed`, `#freqMin`, `#freqMax`) | Image panel partial | Slider updates live label; values consumed during playback per mode.【F:partials/image-sonification.html†L1-L36】【F:js/soundlab-events.js†L97-L101】【F:js/soundlab-image.js†L117-L330】 | Panel stays hidden until image loads, preserving layout integrity.【F:js/soundlab-image.js†L42-L55】 |
++++| Logging controls (`#clearLogBtn`, `#exportLogBtn`, `#exportJsonBtn`) | Log partial | Click handlers reset log or export CSV/JSON via Blob download.【F:partials/log-and-matrix.html†L3-L33】【F:js/soundlab-events.js†L103-L105】【F:js/soundlab-logging.js†L18-L144】 | Shortcut legend auto-populates from `data-shortcut` attributes.【F:js/soundlab-logging.js†L146-L164】 |
++++| Config dropdown `#configSelect` | Config loader partial | `change` handler fetches JSON, normalizes, and applies to UI/matrix.【F:partials/config-loader.html†L1-L8】【F:js/soundlab-events.js†L92-L95】【F:js/soundlab-config.js†L4-L142】 |
++++| Status displays (`#status`, `#statusTip`, `#shortcutLegend`, log counters) | Transport & log partials | Updated across modules to reflect lifecycle state.【F:partials/transport-controls.html†L101-L176】【F:partials/log-and-matrix.html†L3-L33】【F:js/soundlab-audio-core.js†L248-L359】【F:js/soundlab-logging.js†L48-L164】 | Provide user feedback for readiness, diagnostics, and logging. |
++++
++++### Findings
++++* All declared interactive elements are wired to handlers after partial loading; no orphaned IDs detected because `loadPartials()` awaits each include before binding events.【F:js/soundlab-main.js†L335-L364】【F:js/soundlab-events.js†L66-L107】
++++* Shortcut legend covers every control exposing a `data-shortcut`, ensuring accessibility parity between mouse and keyboard workflows.【F:js/soundlab-logging.js†L146-L164】
++++* Event registration assumes partial markup availability; if a new include fails without a fallback snippet, `document.getElementById(...).addEventListener` would throw. Consider null-guards or `querySelector` option chaining for future extensibility.【F:js/soundlab-events.js†L69-L107】【F:js/soundlab-main.js†L335-L349】
++++
++++## 2. Audio Graph Validation
++++### Observations
++++* `initAudio()` constructs a linear chain (source → EQ filters → waveshaper → gain → analyser → destination), seeds analyser buffers, and primes UI state.【F:js/soundlab-audio-core.js†L216-L260】
++++* `generateTone()`/`loadAudioFile()` rebuild upstream sources while reusing the shared processing chain via `ensureProcessingChain()`.【F:js/soundlab-audio-core.js†L262-L333】
++++* `stopAudio()` tears down active oscillator/buffer sources and restores transport controls, but leaves the processing chain hot for subsequent playback.【F:js/soundlab-audio-core.js†L338-L359】
++++
++++### Issues & recommendations
++++| Severity | Issue | Evidence | Recommendation |
++++| --- | --- | --- | --- |
++++| **High** | Saturation mix removes the dry signal entirely: the waveshaper curve is scaled by `params.mix/100`, so the default mix of `0` silences all audio traversing the chain.【F:js/soundlab-audio-core.js†L19-L106】 | Implement a parallel dry path or compute a crossfaded output (e.g., mix = 0 routes dry signal, mix = 100 fully wet). At minimum, default mix should be 100% until blending is supported. |
++++| Medium | `ensureProcessingChain()` repeatedly disconnects nodes on each call; while safe, it risks transient pops under load and omits context resume for suspended states.【F:js/soundlab-audio-core.js†L56-L92】 | Cache a flag to skip redundant disconnect/reconnect cycles and call `audioContext.resume()` inside `initAudio()` for Safari/Chrome autoplay policies. |
++++| Medium | `stopAudio()` does not call `setAudioPlaying(false)`, while Φ mode uses that flag. Divergent state tracking can desynchronize shared status helpers.【F:js/soundlab-audio-core.js†L338-L359】【F:js/soundlab-phi.js†L258-L285】 | Normalize on the exported setter when toggling playback so UI components share the same state source. |
++++
++++## 3. Φ Mode Dispatch and Recovery
++++### Observations
++++* `runPhiMode()` validates the audio graph, stops prior Φ synthesis, then branches across tone/AM/FM/interval/harmonic implementations that share envelope helpers and parameter sampling from `getParams()`.【F:js/soundlab-phi.js†L71-L256】【F:js/soundlab-utils.js†L39-L59】
++++* On completion, last-run parameters are cached and the restore button is enabled; `restoreLastParams()` hydrates form inputs and announces status.【F:js/soundlab-phi.js†L258-L313】
++++* `diagnosticParamsLog()` prints structured details to the console and echoes a concise summary in the status banner.【F:js/soundlab-phi.js†L316-L333】
++++
++++### Issues & recommendations
++++| Severity | Issue | Evidence | Recommendation |
++++| --- | --- | --- | --- |
++++| Medium | When a Φ run times out naturally, the stop button remains enabled even though synthesis is halted, inviting redundant presses.【F:js/soundlab-phi.js†L258-L285】 | Disable `#stopBtn` inside the timeout callback (and re-enable Generate) to keep transport UI truthful without relying on manual stop. |
++++| Medium | Parameter recovery is session-bound only; reloading the page clears `lastParams`, reducing Φ workflow continuity.【F:js/soundlab-phi.js†L10-L44】【F:js/soundlab-phi.js†L266-L275】 | Persist the last Φ payload into `localStorage` (with timestamp) and hydrate during initialization to survive reloads. |
++++| Low | `diagnosticParamsLog()` relies on the console for detail, offering no in-app history beyond transient status text.【F:js/soundlab-phi.js†L316-L333】 | Pipe diagnostic output into the existing logging panel or a dedicated diagnostics feed for traceability. |
++++
++++## 4. Image Sonification Workflow
++++### Observations
++++* Image loading scales artwork to ≤512 px, reveals the sonification panel, and populates metadata before asserting audio readiness.【F:js/soundlab-image.js†L9-L58】
++++* Playback toggles update button text and status messaging while dispatching to spectral, harmonic, FM, or additive renderers that interpret pixel data differently.【F:js/soundlab-image.js†L64-L330】
++++* Each renderer advances a column counter, calls `drawScanIndicator()`, and halts automatically at image bounds.【F:js/soundlab-image.js†L152-L343】
++++
++++### Issues & recommendations
++++| Severity | Issue | Evidence | Recommendation |
++++| --- | --- | --- | --- |
++++| Medium | Loading an image before the audio engine is started leaves `#playImageBtn` enabled, yet subsequent playback simply returns without user feedback when `audioContext` is null.【F:js/soundlab-image.js†L46-L75】 | Either defer enabling Play until `getAudioContext()` succeeds or display a status prompt when `startImagePlayback()` aborts due to a missing context. |
++++| Medium | FM mode allocates a persistent `GainNode` (`modGain`) that is never stored in `imageOscillators`, so `stopImagePlayback()` cannot disconnect it explicitly.【F:js/soundlab-image.js†L222-L277】 | Track auxiliary nodes alongside oscillators or add a dedicated cleanup routine to prevent stray graph attachments during repeated toggles. |
++++| Medium | Harmonic and additive modes spawn numerous short-lived oscillators without tracking references, so stopping playback midway cannot immediately halt grains in flight.【F:js/soundlab-image.js†L187-L330】 | Maintain a pool of active grains (oscillators & gains) to allow forced teardown when the user presses Stop. |
++++| Low | `freqMin`/`freqMax` inputs accept any numeric values without validation, which can lead to silent or aliasing-prone spectra.【F:js/soundlab-image.js†L122-L330】 | Clamp ranges inside playback routines and surface validation errors near the form fields. |
++++
++++## 5. Logging and Export Hooks
++++### Observations
++++* Parameter deltas, derived “force/work,” and running totals populate both the DOM log and downloadable CSV/JSON exports.【F:js/soundlab-logging.js†L18-L144】
++++* Clearing the log resets counters and redraws the placeholder; shortcut legend generation keeps keyboard hints in sync with UI changes.【F:js/soundlab-logging.js†L92-L164】
++++
++++### Issues & recommendations
++++| Severity | Issue | Evidence | Recommendation |
++++| --- | --- | --- | --- |
++++| Medium | Only knob interactions trigger logging; Φ mode actions, image scans, and transport events leave no audit trail.【F:js/soundlab-events.js†L110-L287】【F:js/soundlab-phi.js†L71-L333】【F:js/soundlab-image.js†L64-L330】 | Extend `logParameterChange()` usage (or introduce event-level logging) for Φ dispatch, image playback toggles, and transport state changes to achieve complete workflow coverage. |
++++| Low | CSV/JSON exports assume synchronous Blob support and do not report success/failure in the UI.【F:js/soundlab-logging.js†L99-L144】 | Update status text on export completion (or failure) so users receive inline confirmation without relying on browser download UI. |
++++
++++## 6. Modularization Integrity Check
++++### Observations
++++* `loadPartials()` fetches each include sequentially, falling back to baked-in HTML snippets when a request fails, guaranteeing required IDs exist before handler registration.【F:js/soundlab-main.js†L5-L369】
++++* Initialization order—partials, matrix seed, logging, then events—keeps dependencies satisfied (matrix grid exists before `updateMatrix()`, log elements exist before `initLogging()`, etc.).【F:js/soundlab-main.js†L352-L364】
++++* Audio state is centralized in `soundlab-audio-core.js`, and shared getters ensure other modules read from the same context instance.【F:js/soundlab-audio-core.js†L32-L55】
++++
++++### Issues & recommendations
++++| Severity | Issue | Evidence | Recommendation |
++++| --- | --- | --- | --- |
++++| Medium | Sequential partial loading can delay first paint and input readiness if any include stalls.【F:js/soundlab-main.js†L352-L356】 | Load partials in parallel (`Promise.all`) while preserving post-load initialization sequencing to reduce perceived startup latency. |
++++| Low | Event binding assumes fallback HTML parity; if a future partial omits an ID, initialization will throw and halt setup.【F:js/soundlab-events.js†L69-L107】 | Wrap each `getElementById` call with optional chaining or guard clauses to improve resilience during iterative modular refactors. |
++++
++++## 7. Summary Report
++++| Area | Issues Found | Severity | Impact | Suggested Fixes | Missing Tests | Confidence |
++++| --- | --- | --- | --- | --- | --- | --- |
++++| Audio core | Dry/wet mix bug; redundant reconnects; inconsistent playback state flag | High / Medium | Silence by default, potential pops, state drift | Introduce proper mix bus; memoize connections; standardize `setAudioPlaying` usage | No automated Web Audio regression suite | Medium |
++++| Φ mode | Stop button state drift; session-only recovery; diagnostic visibility | Medium / Low | Confusing transport UI; lost presets across reloads; limited traceability | Disable stop post-timeout; persist last params; surface diagnostics in UI | No preset dispatch tests | Medium |
++++| Image sonification | Audio-context gating; FM cleanup gap; granular teardown; input validation | Medium / Low | User confusion, lingering nodes, noisy stoppage, invalid spectra | Gate Play button via context; track auxiliary nodes; maintain grain pool; clamp frequency inputs | No mode-by-mode playback tests | Low |
++++| Logging | Coverage gaps; export feedback | Medium / Low | Incomplete audit trail; unclear export results | Log Φ/image/transport actions; update status after exports | No log export unit tests | Medium |
++++| Modularization | Sequential include loading; rigid binding assumptions | Medium / Low | Slower initial render; brittle future changes | Parallelize fetches; add binding guards | No integration smoke tests | Medium |
++++
++++**Overall:** The system is structurally sound, but the high-severity saturation mix defect and several medium-level lifecycle gaps merit prioritization. Confidence is medium because review relied on static analysis; targeted runtime tests (especially across browsers for Web Audio) are still required.
+++diff --git a/docs/summary.md b/docs/summary.md
+++new file mode 100644
+++index 0000000000000000000000000000000000000000..1d52a5436b1879865dfdcbb3d9664be25b20b1aa
+++--- /dev/null
++++++ b/docs/summary.md
+++@@ -0,0 +1,20 @@
++++# Soundlab Documentation Summary
++++
++++## Functional Element Map Highlights
++++- Catalogs all interactive controls, hidden inputs, and status displays in `soundlab_v1.html` after modularization.
++++- Groups UI pieces into transport/Φ controls, EQ and saturation panels, image sonification workspace, and visualization/logging tools.
++++- Records linked stylesheets, HTML partials, and JavaScript modules to verify dependencies are intact.
++++- Notes that initialization chains (`initializeSoundlab`) and key module exports remain connected with no missing elements.
++++
++++## Modularization Validation Overview
++++- Describes the manual verification pass that exercised loading, playback, synthesis, visualizers, and logging in the modular build.
++++- Confirms asynchronous partial loading preserves initialization order and shared audio state across modules.
++++- Verifies hidden inputs and keyboard shortcuts still function and that no runtime errors appeared during testing.
++++- Concludes the modularized interface preserves full functionality relative to the original monolithic page.
++++
++++## Key Functions and Their Roles
++++- `initializeSoundlab()` sequences partial loading, audio setup, and event wiring so the modular UI boots in the correct order.
++++- `initAudio()`, `generateTone()`, and `stopAudio()` maintain the core Web Audio graph, covering start-up, tone creation, and teardown.
++++- `runPhiMode()` dispatches Φ generator presets, while `restoreLastParams()` and `diagnosticParamsLog()` recover and inspect recent settings.
++++- `toggleImagePlayback()` coordinates spectral, harmonic, FM, and additive scans for the image-to-sound workflow.
++++- `logParameterChange()` and `initLogging()` capture interface actions, refresh the on-screen log, and expose export hooks.
+++diff --git a/js/soundlab-hybrid.js b/js/soundlab-hybrid.js
+++new file mode 100644
+++index 0000000000000000000000000000000000000000..0253714bf4b51403f0626bb0c24450f33688b9e2
+++--- /dev/null
++++++ b/js/soundlab-hybrid.js
+++@@ -0,0 +1,156 @@
++++import soundlabAudioEngine from '../static/js/soundlab-audio-engine.js';
++++
++++function formatMetric(value, fallback = '--') {
++++  if (typeof value !== 'number' || Number.isNaN(value)) {
++++    return fallback;
++++  }
++++  return value.toFixed(3);
++++}
++++
++++function computeWebSocketUrl() {
++++  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
++++  return `${protocol}//${window.location.host}/ws/hybrid`;
++++}
++++
++++export function initializeHybridControls() {
++++  const toggle = document.getElementById('hybridModeToggle');
++++  const sourceSelect = document.getElementById('phiSourceSelect');
++++  const statusEl = document.getElementById('hybridStatus');
++++  const metricsContainer = document.getElementById('hybridMetrics');
++++
++++  if (!toggle || !sourceSelect) {
++++    return;
++++  }
++++
++++  let unsubscribeMetrics = null;
++++  let unsubscribeState = null;
++++
++++  function updateMetrics(metrics) {
++++    if (!metricsContainer || !metrics) {
++++      return;
++++    }
++++
++++    const iciEl = metricsContainer.querySelector('[data-metric="ici"]');
++++    const coherenceEl = metricsContainer.querySelector('[data-metric="coherence"]');
++++    const centroidEl = metricsContainer.querySelector('[data-metric="centroid"]');
++++    const latencyEl = metricsContainer.querySelector('[data-metric="latency"]');
++++    const cpuEl = metricsContainer.querySelector('[data-metric="cpu"]');
++++
++++    if (iciEl) {
++++      iciEl.textContent = `ICI: ${formatMetric(metrics.ici)}`;
++++    }
++++    if (coherenceEl) {
++++      coherenceEl.textContent = `Coherence: ${formatMetric(metrics.coherence)}`;
++++    }
++++    if (centroidEl) {
++++      centroidEl.textContent = `Centroid: ${formatMetric(metrics.centroid)}`;
++++    }
++++    if (latencyEl) {
++++      const latency = typeof metrics.latencyMs === 'number' ? metrics.latencyMs.toFixed(2) : '--';
++++      latencyEl.textContent = `Latency: ${latency} ms`;
++++    }
++++    if (cpuEl) {
++++      const cpu = typeof metrics.cpuLoad === 'number' ? (metrics.cpuLoad * 100).toFixed(1) : '--';
++++      cpuEl.textContent = `CPU: ${cpu}%`;
++++    }
++++  }
++++
++++  function setStatus(message) {
++++    if (statusEl) {
++++      statusEl.textContent = message;
++++    }
++++  }
++++
++++  unsubscribeState = soundlabAudioEngine.onHybridState(state => {
++++    if (!state) {
++++      return;
++++    }
++++    const enabled = Boolean(state.enabled);
++++    if (enabled && !toggle.checked) {
++++      toggle.checked = true;
++++      setStatus('Hybrid mode enabled remotely. Monitoring analog bridge.');
++++      if (!unsubscribeMetrics) {
++++        unsubscribeMetrics = soundlabAudioEngine.onHybridMetrics(updateMetrics);
++++      }
++++    } else if (!enabled && toggle.checked) {
++++      toggle.checked = false;
++++      if (unsubscribeMetrics) {
++++        unsubscribeMetrics();
++++        unsubscribeMetrics = null;
++++      }
++++      setStatus('Hybrid mode disabled remotely. Metrics paused.');
++++    }
++++  });
++++
++++  toggle.addEventListener('change', async () => {
++++    const enabled = toggle.checked;
++++    if (enabled) {
++++      setStatus('Connecting to hybrid node...');
++++      try {
++++        const phiSource = sourceSelect.value;
++++        const websocketUrl = computeWebSocketUrl();
++++        if (unsubscribeMetrics) {
++++          unsubscribeMetrics();
++++          unsubscribeMetrics = null;
++++        }
++++        const enableState = await soundlabAudioEngine.setHybridMode(true, { phiSource, websocketUrl });
++++        if (!enableState || enableState.enabled !== true) {
++++          throw new Error('Hybrid node did not acknowledge enable request');
++++        }
++++        unsubscribeMetrics = soundlabAudioEngine.onHybridMetrics(updateMetrics);
++++        setStatus('Hybrid mode active. Monitoring analog bridge.');
++++        const stopBtn = document.getElementById('stopBtn');
++++        if (stopBtn && stopBtn.disabled) {
++++          stopBtn.disabled = false;
++++        }
++++      } catch (error) {
++++        console.error('Failed to enable hybrid mode', error);
++++        toggle.checked = false;
++++        setStatus(`Hybrid mode failed: ${error?.message || error}`);
++++      }
++++    } else {
++++      try {
++++        const disableState = await soundlabAudioEngine.setHybridMode(false);
++++        if (disableState && disableState.enabled) {
++++          throw new Error('Hybrid node reported active after disable');
++++        }
++++        setStatus('Hybrid mode idle. External metrics offline.');
++++      } catch (error) {
++++        console.error('Failed to disable hybrid mode', error);
++++        setStatus(`Hybrid disable failed: ${error?.message || error}`);
++++      }
++++      if (unsubscribeMetrics) {
++++        unsubscribeMetrics();
++++        unsubscribeMetrics = null;
++++      }
++++    }
++++  });
++++
++++  sourceSelect.addEventListener('change', async () => {
++++    if (!toggle.checked) {
++++      setStatus(`Φ source queued: ${sourceSelect.selectedOptions[0]?.text || sourceSelect.value}`);
++++      return;
++++    }
++++    try {
++++      await soundlabAudioEngine.setHybridPhiSource(sourceSelect.value);
++++      setStatus(`Φ source set to ${sourceSelect.selectedOptions[0]?.text || sourceSelect.value}.`);
++++    } catch (error) {
++++      console.error('Failed to update Φ source', error);
++++      setStatus(`Φ source update failed: ${error?.message || error}`);
++++    }
++++  });
++++
++++  window.addEventListener('beforeunload', () => {
++++    if (unsubscribeMetrics) {
++++      unsubscribeMetrics();
++++      unsubscribeMetrics = null;
++++    }
++++    if (unsubscribeState) {
++++      unsubscribeState();
++++      unsubscribeState = null;
++++    }
++++    if (toggle.checked) {
++++      soundlabAudioEngine.setHybridMode(false);
++++    }
++++  });
++++}
+++diff --git a/js/soundlab-main.js b/js/soundlab-main.js
+++index b15c19e3282a5ed453e6f54f0f9606488415ec83..28673c502f5be45d338c1722dc28f9560489fec2 100644
+++--- a/js/soundlab-main.js
++++++ b/js/soundlab-main.js
+++@@ -1,28 +1,29 @@
+++ import { initLogging } from './soundlab-logging.js';
+++ import { updateMatrix } from './soundlab-audio-core.js';
+++ import { initializeEventHandlers } from './soundlab-events.js';
++++import { initializeHybridControls } from './soundlab-hybrid.js';
+++ 
+++ const FALLBACK_PARTIALS = {
+++   'partials/config-loader.html': `
+++ <div class="dropdown-container">
+++   <label for="configSelect">Select Config:</label>
+++   <select id="configSelect" class="form-field__control">
+++     <option value="">-- Choose a Config --</option>
+++     <option value="phi_tone_run_01_with_history.json">phi_tone_run_01</option>
+++   </select>
+++   <pre id="preview" class="config-preview">No config loaded.</pre>
+++ </div>
+++ `,
+++   'partials/transport-controls.html': `
+++ <div class="controls" role="group" aria-label="Primary transport and utility controls">
+++   <button
+++     id="startBtn"
+++     type="button"
+++     aria-label="Start audio engine (Control+Shift+S)"
+++     aria-keyshortcuts="Control+Shift+S"
+++     data-shortcut="Ctrl+Shift+S"
+++     data-shortcut-label="Start audio"
+++   >
+++     Start Audio
+++   </button>
+++   <button
+++@@ -153,50 +154,79 @@ const FALLBACK_PARTIALS = {
+++       Run Φ Mode
+++     </button>
+++     <button
+++       id="restoreParamsBtn"
+++       type="button"
+++       disabled
+++       aria-label="Restore previous Φ parameters (Control+Shift+R)"
+++       aria-keyshortcuts="Control+Shift+R"
+++       data-shortcut="Ctrl+Shift+R"
+++       data-shortcut-label="Restore Φ params"
+++     >
+++       Restore Previous
+++     </button>
+++     <button
+++       id="diagnosticBtn"
+++       type="button"
+++       aria-label="Run diagnostic output (Control+Shift+D)"
+++       aria-keyshortcuts="Control+Shift+D"
+++       data-shortcut="Ctrl+Shift+D"
+++       data-shortcut-label="Run diagnostic"
+++     >
+++       Run Diagnostic
+++     </button>
+++   </div>
+++ </div>
++++
++++<div class="panel panel--spaced" id="hybridPanel">
++++  <h2>Hybrid Mode Bridge</h2>
++++  <div class="hybrid-controls" role="group" aria-label="Hybrid mode controls">
++++    <label class="hybrid-toggle" for="hybridModeToggle">
++++      <input type="checkbox" id="hybridModeToggle" />
++++      <span>Enable Hybrid Mode</span>
++++    </label>
++++    <div class="hybrid-field">
++++      <label for="phiSourceSelect">Φ Source</label>
++++      <select id="phiSourceSelect">
++++        <option value="internal">Internal Synth</option>
++++        <option value="external_ws">External WebSocket</option>
++++        <option value="analog_sensor">Analog Sensor Array</option>
++++        <option value="manual">Manual Slider</option>
++++      </select>
++++    </div>
++++  </div>
++++  <div class="hybrid-status" id="hybridStatus" role="status" aria-live="polite">
++++    Hybrid mode idle. External metrics offline.
++++  </div>
++++  <div class="hybrid-metrics" id="hybridMetrics" aria-live="polite">
++++    <span data-metric="ici">ICI: --</span>
++++    <span data-metric="coherence">Coherence: --</span>
++++    <span data-metric="centroid">Centroid: --</span>
++++    <span data-metric="latency">Latency: -- ms</span>
++++    <span data-metric="cpu">CPU: --%</span>
++++  </div>
++++</div>
+++ `,
+++   'partials/eq-panel.html': `
+++ <div class="panel">
+++   <h2>⚙ Spectral Control (EQ) ⚙</h2>
+++   <div class="knob-row">
+++     <div class="knob-container">
+++       <div class="knob-label">Low (100Hz)</div>
+++       <div class="knob" id="lowKnob" data-param="low" data-value="0" tabindex="0"></div>
+++       <div class="knob-value" id="lowValue">0 dB</div>
+++     </div>
+++     <div class="knob-container">
+++       <div class="knob-label">Mid (1kHz)</div>
+++       <div class="knob" id="midKnob" data-param="mid" data-value="0" tabindex="0"></div>
+++       <div class="knob-value" id="midValue">0 dB</div>
+++     </div>
+++     <div class="knob-container">
+++       <div class="knob-label">High (8kHz)</div>
+++       <div class="knob" id="highKnob" data-param="high" data-value="0" tabindex="0"></div>
+++       <div class="knob-value" id="highValue">0 dB</div>
+++     </div>
+++   </div>
+++ </div>
+++ `,
+++   'partials/saturation-panel.html': `
+++ <div class="panel">
+++@@ -339,32 +369,33 @@ async function loadPartial(element) {
+++   try {
+++     const response = await fetch(url);
+++     if (!response.ok) {
+++       throw new Error(`Failed to load ${url}: ${response.status}`);
+++     }
+++     const html = await response.text();
+++     element.innerHTML = html;
+++   } catch (error) {
+++     console.error(error);
+++     element.innerHTML = FALLBACK_PARTIALS[url] || `<div class="panel">Failed to load ${url}</div>`;
+++   }
+++ }
+++ 
+++ async function loadPartials() {
+++   const includeElements = Array.from(document.querySelectorAll('[data-include]'));
+++   for (const element of includeElements) {
+++     await loadPartial(element);
+++   }
+++ }
+++ 
+++ async function initializeSoundlab() {
+++   await loadPartials();
+++   updateMatrix();
+++   initLogging();
+++   initializeEventHandlers();
++++  initializeHybridControls();
+++ }
+++ 
+++ if (document.readyState === 'loading') {
+++   document.addEventListener('DOMContentLoaded', initializeSoundlab, { once: true });
+++ } else {
+++   initializeSoundlab();
+++ }
+++diff --git a/partials/transport-controls.html b/partials/transport-controls.html
+++index c9ba70b88d9b9d29e39c591a62129a8bb92e9e7b..798a9e0c0f815859ab0872485c8d29e03abefb99 100644
+++--- a/partials/transport-controls.html
++++++ b/partials/transport-controls.html
+++@@ -137,25 +137,54 @@
+++       Run Φ Mode
+++     </button>
+++     <button
+++       id="restoreParamsBtn"
+++       type="button"
+++       disabled
+++       aria-label="Restore previous Φ parameters (Control+Shift+R)"
+++       aria-keyshortcuts="Control+Shift+R"
+++       data-shortcut="Ctrl+Shift+R"
+++       data-shortcut-label="Restore Φ params"
+++     >
+++       Restore Previous
+++     </button>
+++     <button
+++       id="diagnosticBtn"
+++       type="button"
+++       aria-label="Run diagnostic output (Control+Shift+D)"
+++       aria-keyshortcuts="Control+Shift+D"
+++       data-shortcut="Ctrl+Shift+D"
+++       data-shortcut-label="Run diagnostic"
+++     >
+++       Run Diagnostic
+++     </button>
+++   </div>
+++ </div>
++++
++++<div class="panel panel--spaced" id="hybridPanel">
++++  <h2>Hybrid Mode Bridge</h2>
++++  <div class="hybrid-controls" role="group" aria-label="Hybrid mode controls">
++++    <label class="hybrid-toggle" for="hybridModeToggle">
++++      <input type="checkbox" id="hybridModeToggle" />
++++      <span>Enable Hybrid Mode</span>
++++    </label>
++++    <div class="hybrid-field">
++++      <label for="phiSourceSelect">Φ Source</label>
++++      <select id="phiSourceSelect">
++++        <option value="internal">Internal Synth</option>
++++        <option value="external_ws">External WebSocket</option>
++++        <option value="analog_sensor">Analog Sensor Array</option>
++++        <option value="manual">Manual Slider</option>
++++      </select>
++++    </div>
++++  </div>
++++  <div class="hybrid-status" id="hybridStatus" role="status" aria-live="polite">
++++    Hybrid mode idle. External metrics offline.
++++  </div>
++++  <div class="hybrid-metrics" id="hybridMetrics" aria-live="polite">
++++    <span data-metric="ici">ICI: --</span>
++++    <span data-metric="coherence">Coherence: --</span>
++++    <span data-metric="centroid">Centroid: --</span>
++++    <span data-metric="latency">Latency: -- ms</span>
++++    <span data-metric="cpu">CPU: --%</span>
++++  </div>
++++</div>
+++diff --git a/requirements.txt b/requirements.txt
+++new file mode 100644
+++index 0000000000000000000000000000000000000000..a069b0af2b0e693528446800b546a3ad3ea694ee
+++--- /dev/null
++++++ b/requirements.txt
+++@@ -0,0 +1,4 @@
++++fastapi>=0.111.0
++++uvicorn[standard]>=0.27.0
++++sounddevice>=0.4.6
++++numpy>=1.24.0
+++diff --git a/server/__init__.py b/server/__init__.py
+++new file mode 100644
+++index 0000000000000000000000000000000000000000..31d8cfa9e0ea605ecac9e1026f8c7669d0b66c6b
+++--- /dev/null
++++++ b/server/__init__.py
+++@@ -0,0 +1,5 @@
++++"""Hybrid node server package for Chromatic Cognition."""
++++
++++from .hybrid_node import HybridNode
++++
++++__all__ = ["HybridNode"]
+++diff --git a/server/app.py b/server/app.py
+++new file mode 100644
+++index 0000000000000000000000000000000000000000..11ded33e92f0c6e8379b80cb7f877356fc803fa5
+++--- /dev/null
++++++ b/server/app.py
+++@@ -0,0 +1,83 @@
++++"""FastAPI application exposing the hybrid node WebSocket bridge."""
++++
++++from __future__ import annotations
++++
++++import asyncio
++++import contextlib
++++import logging
++++from typing import Any, Dict
++++
++++from fastapi import FastAPI, WebSocket, WebSocketDisconnect
++++from fastapi.middleware.cors import CORSMiddleware
++++
++++from .hybrid_node import HybridNode
++++
++++LOGGER = logging.getLogger(__name__)
++++
++++app = FastAPI(title="Chromatic Cognition Hybrid Node")
++++app.add_middleware(
++++    CORSMiddleware,
++++    allow_origins=["*"],
++++    allow_credentials=True,
++++    allow_methods=["*"],
++++    allow_headers=["*"],
++++)
++++
++++hybrid_node = HybridNode()
++++
++++
++++@app.on_event("shutdown")
++++async def shutdown_event() -> None:
++++    await hybrid_node.stop()
++++
++++
++++@app.websocket("/ws/hybrid")
++++async def hybrid_socket(websocket: WebSocket) -> None:
++++    await websocket.accept()
++++    queue = await hybrid_node.register_client()
++++    metrics_task = asyncio.create_task(queue.get())
++++    receiver_task = asyncio.create_task(websocket.receive_text())
++++
++++    async def _send_state(state: Dict[str, Any]) -> None:
++++        await websocket.send_json({"type": "state", "payload": state})
++++
++++    try:
++++        await _send_state(hybrid_node.status())
++++        while True:
++++            done, pending = await asyncio.wait(
++++                {metrics_task, receiver_task},
++++                return_when=asyncio.FIRST_COMPLETED,
++++            )
++++
++++            if metrics_task in done:
++++                metrics = metrics_task.result()
++++                await websocket.send_json({"type": "metrics", "payload": metrics})
++++                metrics_task = asyncio.create_task(queue.get())
++++
++++            if receiver_task in done:
++++                message = receiver_task.result()
++++                try:
++++                    state = await hybrid_node.handle_message(message)
++++                    await _send_state(state)
++++                except Exception as err:  # pragma: no cover - defensive guard
++++                    LOGGER.exception("Hybrid message error: %s", err)
++++                    await websocket.send_json({"type": "error", "payload": {"message": str(err)}})
++++                finally:
++++                    receiver_task = asyncio.create_task(websocket.receive_text())
++++
++++            for task in pending:
++++                task.cancel()
++++                with contextlib.suppress(asyncio.CancelledError):
++++                    await task
++++
++++    except WebSocketDisconnect:
++++        LOGGER.info("Hybrid client disconnected")
++++    finally:
++++        hybrid_node.unregister_client(queue)
++++        metrics_task.cancel()
++++        receiver_task.cancel()
++++        with contextlib.suppress(asyncio.CancelledError):
++++            await metrics_task
++++        with contextlib.suppress(asyncio.CancelledError):
++++            await receiver_task
++++        await hybrid_node.stop()
+++diff --git a/server/hybrid_node.py b/server/hybrid_node.py
+++new file mode 100644
+++index 0000000000000000000000000000000000000000..6febd004ba7f1b0dcd471a1c4b2852f5abd93609
+++--- /dev/null
++++++ b/server/hybrid_node.py
+++@@ -0,0 +1,313 @@
++++"""Hybrid audio node bridging analog input to the Chromatic Field processor."""
++++
++++from __future__ import annotations
++++
++++import asyncio
++++import json
++++import logging
++++import math
++++import time
++++from dataclasses import dataclass, field
++++from typing import Any, Dict, Optional, Set
++++
++++try:  # pragma: no cover - optional dependency at runtime
++++    import sounddevice as sd
++++except Exception:  # pragma: no cover - gracefully fall back to simulation
++++    sd = None  # type: ignore
++++
++++try:  # pragma: no cover - optional dependency at runtime
++++    import numpy as np
++++except Exception:  # pragma: no cover
++++    np = None  # type: ignore
++++
++++LOGGER = logging.getLogger(__name__)
++++
++++
++++@dataclass
++++class HybridMetrics:
++++    """Container describing the hybrid node metrics."""
++++
++++    ici: float
++++    coherence: float
++++    centroid: float
++++    phi_value: float
++++    latency_ms: float
++++    cpu_load: float
++++    timestamp: float = field(default_factory=lambda: time.time())
++++
++++    def asdict(self) -> Dict[str, float]:
++++        return {
++++            "ici": round(float(self.ici), 6),
++++            "coherence": round(float(self.coherence), 6),
++++            "centroid": round(float(self.centroid), 6),
++++            "phi": round(float(self.phi_value), 6),
++++            "latencyMs": round(float(self.latency_ms), 3),
++++            "cpuLoad": round(float(self.cpu_load), 4),
++++            "timestamp": float(self.timestamp),
++++        }
++++
++++
++++class ChromaticFieldProcessor:
++++    """Simple processor that derives perceptual metrics from audio blocks."""
++++
++++    def __init__(self, sample_rate: int, channels: int) -> None:
++++        if np is None:
++++            raise RuntimeError("numpy is required for ChromaticFieldProcessor")
++++        self.sample_rate = sample_rate
++++        self.channels = channels
++++        self._window = np.hanning
++++
++++    def process_block(self, block: "np.ndarray", phi_value: float) -> HybridMetrics:
++++        if block.size == 0:
++++            return HybridMetrics(0.0, 0.0, 0.0, phi_value, 0.0, 0.0)
++++
++++        mono = block.mean(axis=1)
++++        windowed = mono * self._window(len(mono))
++++        spectrum = np.fft.rfft(windowed)
++++        magnitude = np.abs(spectrum)
++++        energy = np.mean(magnitude)
++++        ici = float(np.clip(energy / (np.max(magnitude) + 1e-6), 0.0, 1.0))
++++
++++        if block.shape[1] > 1:
++++            ref = block[:, 0]
++++            correlations = []
++++            for channel in block.T[1:]:
++++                numerator = float(np.dot(ref, channel))
++++                denominator = float(np.linalg.norm(ref) * np.linalg.norm(channel) + 1e-9)
++++                correlations.append(numerator / denominator if denominator else 0.0)
++++            coherence = float(np.clip(np.mean(correlations), 0.0, 1.0))
++++        else:
++++            coherence = 1.0
++++
++++        freqs = np.fft.rfftfreq(len(windowed), d=1.0 / self.sample_rate)
++++        spectral_sum = np.sum(magnitude)
++++        if spectral_sum == 0:
++++            centroid = 0.0
++++        else:
++++            centroid = float(np.sum(freqs * magnitude) / spectral_sum)
++++
++++        centroid_norm = float(np.clip(centroid / (self.sample_rate / 2), 0.0, 1.0))
++++
++++        return HybridMetrics(
++++            ici=ici,
++++            coherence=coherence,
++++            centroid=centroid_norm,
++++            phi_value=phi_value,
++++            latency_ms=0.0,
++++            cpu_load=0.0,
++++        )
++++
++++
++++class HybridNode:
++++    """Manages the analog ↔ digital bridge and metric broadcasting."""
++++
++++    def __init__(
++++        self,
++++        sample_rate: int = 48_000,
++++        channels: int = 8,
++++        block_size: int = 256,
++++        processor: Optional[ChromaticFieldProcessor] = None,
++++    ) -> None:
++++        self.sample_rate = sample_rate
++++        self.channels = channels
++++        self.block_size = block_size
++++        self.processor = processor or ChromaticFieldProcessor(sample_rate, channels)
++++
++++        self._stream: Optional[Any] = None
++++        self._active = False
++++        self._hybrid_enabled = False
++++        self._phi_value = 0.0
++++        self._gain = 1.0
++++        self._phi_source = "internal"
++++        self._loop: Optional[asyncio.AbstractEventLoop] = None
++++        self._metrics_clients: Set[asyncio.Queue[Dict[str, float]]] = set()
++++        self._cpu_alpha = 0.25
++++        self._cpu_estimate = 0.0
++++        self._simulate = sd is None
++++        self._simulation_task: Optional[asyncio.Task[None]] = None
++++
++++    @property
++++    def is_active(self) -> bool:
++++        return self._active
++++
++++    @property
++++    def phi_source(self) -> str:
++++        return self._phi_source
++++
++++    def _ensure_loop(self) -> asyncio.AbstractEventLoop:
++++        if self._loop is None:
++++            try:
++++                self._loop = asyncio.get_running_loop()
++++            except RuntimeError:
++++                self._loop = asyncio.get_event_loop()
++++        return self._loop
++++
++++    async def enable(self) -> None:
++++        await self.start()
++++        self._hybrid_enabled = True
++++
++++    async def disable(self) -> None:
++++        self._hybrid_enabled = False
++++        await self.stop()
++++
++++    async def start(self) -> None:
++++        if self._active:
++++            return
++++
++++        self._ensure_loop()
++++        self._active = True
++++        if self._simulate:
++++            LOGGER.warning("sounddevice not available; running HybridNode in simulation mode")
++++            self._simulation_task = asyncio.create_task(self._run_simulation())
++++            return
++++
++++        def callback(indata, outdata, frames, time_info, status):  # pragma: no cover - realtime path
++++            if status:
++++                LOGGER.warning("Hybrid stream status: %s", status)
++++            start_time = time.monotonic()
++++            try:
++++                audio_block = indata.copy() if indata is not None else None
++++                if audio_block is None:
++++                    audio_block = np.zeros((frames, self.channels), dtype=np.float32)
++++                processed = audio_block * self._gain
++++                metrics = self._process_block(processed)
++++                block_latency = (time.monotonic() - start_time) * 1000.0
++++                metrics.latency_ms = max(metrics.latency_ms, block_latency, 0.0)
++++                self._dispatch_metrics(metrics)
++++                if outdata is not None:
++++                    outdata[:] = processed
++++            except Exception as err:  # pragma: no cover - realtime safety net
++++                LOGGER.exception("Hybrid callback error: %%s", err)
++++
++++        self._stream = sd.Stream(
++++            samplerate=self.sample_rate,
++++            blocksize=self.block_size,
++++            channels=self.channels,
++++            dtype="float32",
++++            callback=callback,
++++            latency="low",
++++        )
++++        self._stream.start()
++++
++++    async def stop(self) -> None:
++++        if not self._active:
++++            return
++++
++++        self._active = False
++++        if self._stream is not None:  # pragma: no cover - realtime path
++++            try:
++++                self._stream.stop()
++++            finally:
++++                self._stream.close()
++++                self._stream = None
++++        if self._simulation_task:
++++            self._simulation_task.cancel()
++++            try:
++++                await self._simulation_task
++++            except asyncio.CancelledError:
++++                pass
++++            self._simulation_task = None
++++
++++    async def register_client(self) -> asyncio.Queue[Dict[str, float]]:
++++        queue: asyncio.Queue[Dict[str, float]] = asyncio.Queue(maxsize=1)
++++        self._metrics_clients.add(queue)
++++        return queue
++++
++++    def unregister_client(self, queue: asyncio.Queue[Dict[str, float]]) -> None:
++++        self._metrics_clients.discard(queue)
++++
++++    def set_phi_value(self, value: float) -> None:
++++        self._phi_value = float(value)
++++
++++    def set_gain(self, gain: float) -> None:
++++        self._gain = max(0.0, float(gain))
++++
++++    def set_phi_source(self, source: str) -> None:
++++        self._phi_source = source
++++
++++    def status(self) -> Dict[str, Any]:
++++        return {
++++            "active": self._active,
++++            "enabled": self._hybrid_enabled,
++++            "phi": self._phi_value,
++++            "gain": self._gain,
++++            "phiSource": self._phi_source,
++++            "sampleRate": self.sample_rate,
++++            "channels": self.channels,
++++        }
++++
++++    def _process_block(self, block: Any) -> HybridMetrics:
++++        start = time.monotonic()
++++        metrics = self.processor.process_block(block, self._phi_value)
++++        process_duration = time.monotonic() - start
++++        cpu_window = self.block_size / float(self.sample_rate)
++++        instantaneous_load = min(max(process_duration / cpu_window, 0.0), 5.0)
++++        self._cpu_estimate = (
++++            self._cpu_alpha * instantaneous_load + (1.0 - self._cpu_alpha) * self._cpu_estimate
++++        )
++++        metrics.cpu_load = min(self._cpu_estimate, 1.0)
++++        metrics.latency_ms = max(metrics.latency_ms, process_duration * 1000.0, 0.0)
++++        return metrics
++++
++++    def _dispatch_metrics(self, metrics: HybridMetrics) -> None:
++++        loop = self._ensure_loop()
++++        payload = metrics.asdict()
++++
++++        def _fanout() -> None:
++++            stale: Set[asyncio.Queue[Dict[str, float]]] = set()
++++            for queue in list(self._metrics_clients):
++++                if queue.full():
++++                    try:
++++                        queue.get_nowait()
++++                    except asyncio.QueueEmpty:
++++                        pass
++++                try:
++++                    queue.put_nowait(payload)
++++                except asyncio.QueueFull:
++++                    stale.add(queue)
++++            for queue in stale:
++++                self._metrics_clients.discard(queue)
++++
++++        loop.call_soon_threadsafe(_fanout)
++++
++++    async def _run_simulation(self) -> None:
++++        assert np is not None, "numpy is required for simulation"
++++        block_duration = self.block_size / float(self.sample_rate)
++++        phase = 0.0
++++        while self._active:
++++            start = time.monotonic()
++++            # Generate an 8-channel synthetic waveform with gentle modulation.
++++            t = np.arange(self.block_size) / float(self.sample_rate)
++++            carrier = np.sin(2 * math.pi * 220 * t + phase)
++++            phase = (phase + 2 * math.pi * block_duration * 4) % (2 * math.pi)
++++            block = np.stack([carrier * (1 + 0.1 * i) for i in range(self.channels)], axis=1)
++++            block *= (self._phi_value + 1.0) * self._gain * 0.5
++++            metrics = self._process_block(block)
++++            metrics.latency_ms = max(metrics.latency_ms, (time.monotonic() - start) * 1000.0, 0.0)
++++            self._dispatch_metrics(metrics)
++++            sleep_for = max(block_duration - (time.monotonic() - start), 0.0)
++++            await asyncio.sleep(sleep_for)
++++
++++    async def handle_message(self, message: str) -> Dict[str, Any]:
++++        try:
++++            payload = json.loads(message)
++++        except json.JSONDecodeError as error:
++++            LOGGER.error("Invalid hybrid message: %s", error)
++++            return {"error": "invalid_json"}
++++
++++        action = payload.get("action")
++++        if action == "enable":
++++            await self.enable()
++++        elif action == "disable":
++++            await self.disable()
++++        elif action == "phi":
++++            self.set_phi_value(payload.get("value", 0.0))
++++        elif action == "gain":
++++            self.set_gain(payload.get("value", 1.0))
++++        elif action == "source":
++++            self.set_phi_source(payload.get("value", "internal"))
++++        else:
++++            LOGGER.warning("Unknown hybrid action: %s", action)
++++            return {"error": "unknown_action", "action": action}
++++
++++        return {"ok": True, "state": self.status()}
+++diff --git a/static/js/soundlab-audio-engine.js b/static/js/soundlab-audio-engine.js
+++new file mode 100644
+++index 0000000000000000000000000000000000000000..d16c8ab525d27365af1f5a2accc3720e99372f9b
+++--- /dev/null
++++++ b/static/js/soundlab-audio-engine.js
+++@@ -0,0 +1,545 @@
++++class HybridWebSocketClient {
++++  constructor(url, { onMetrics, onState, onError } = {}) {
++++    this.url = url;
++++    this.onMetrics = onMetrics;
++++    this.onState = onState;
++++    this.onError = onError;
++++    this.socket = null;
++++    this._connecting = null;
++++    this._pendingStateResolvers = [];
++++    this.lastState = null;
++++    this._isClosing = false;
++++  }
++++
++++  async connect() {
++++    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
++++      return this.lastState;
++++    }
++++    if (this._connecting) {
++++      return this._connecting;
++++    }
++++    if (!('WebSocket' in window)) {
++++      throw new Error('WebSocket is not supported in this browser.');
++++    }
++++
++++    this._connecting = new Promise((resolve, reject) => {
++++      const socket = new WebSocket(this.url);
++++      const cleanup = () => {
++++        socket.removeEventListener('open', handleOpen);
++++        socket.removeEventListener('message', handleMessage);
++++        socket.removeEventListener('error', handleError);
++++        socket.removeEventListener('close', handleClose);
++++      };
++++
++++      const handleOpen = () => {
++++        this.socket = socket;
++++        cleanup();
++++        this._wireSocketEvents(socket);
++++        resolve(this.lastState);
++++      };
++++
++++      const handleMessage = event => {
++++        try {
++++          const data = JSON.parse(event.data);
++++          if (data.type === 'state') {
++++            this.lastState = data.payload;
++++          }
++++        } catch (error) {
++++          console.error('Hybrid pre-open message parse error', error);
++++        }
++++      };
++++
++++      const handleError = error => {
++++        cleanup();
++++        this._connecting = null;
++++        reject(error instanceof Event ? new Error('Hybrid socket error during connect') : error);
++++      };
++++
++++      const handleClose = () => {
++++        cleanup();
++++        this._connecting = null;
++++        reject(new Error('Hybrid socket closed during handshake'));
++++      };
++++
++++      socket.addEventListener('open', handleOpen);
++++      socket.addEventListener('message', handleMessage);
++++      socket.addEventListener('error', handleError);
++++      socket.addEventListener('close', handleClose);
++++    });
++++
++++    try {
++++      return await this._connecting;
++++    } finally {
++++      this._connecting = null;
++++    }
++++  }
++++
++++  _wireSocketEvents(socket) {
++++    socket.addEventListener('message', event => {
++++      let payload;
++++      try {
++++        payload = JSON.parse(event.data);
++++      } catch (error) {
++++        console.error('Hybrid socket message parse error', error);
++++        return;
++++      }
++++
++++      if (payload.type === 'metrics' && typeof this.onMetrics === 'function') {
++++        this.onMetrics(payload.payload);
++++      }
++++
++++      if (payload.type === 'state') {
++++        this.lastState = payload.payload;
++++        if (typeof this.onState === 'function') {
++++          this.onState(payload.payload);
++++        }
++++        const resolver = this._pendingStateResolvers.shift();
++++        if (resolver) {
++++          clearTimeout(resolver.timeout);
++++          resolver.resolve(payload.payload);
++++        }
++++      }
++++
++++      if (payload.type === 'error') {
++++        const error = new Error(payload.payload?.message || 'Hybrid node reported an error');
++++        if (typeof this.onError === 'function') {
++++          this.onError(error);
++++        } else {
++++          console.error(error);
++++        }
++++      }
++++    });
++++
++++    socket.addEventListener('close', event => {
++++      this.socket = null;
++++      if (!this._isClosing) {
++++        const error = new Error('Hybrid socket closed unexpectedly');
++++        if (typeof this.onError === 'function') {
++++          this.onError(error);
++++        } else {
++++          console.warn(error.message);
++++        }
++++      }
++++      while (this._pendingStateResolvers.length) {
++++        const resolver = this._pendingStateResolvers.shift();
++++        if (resolver) {
++++          clearTimeout(resolver.timeout);
++++          resolver.reject(new Error('Hybrid socket closed before acknowledgement'));
++++        }
++++      }
++++    });
++++
++++    socket.addEventListener('error', event => {
++++      const error = new Error('Hybrid socket encountered an error');
++++      if (typeof this.onError === 'function') {
++++        this.onError(error);
++++      } else {
++++        console.error(error);
++++      }
++++    });
++++  }
++++
++++  _send(payload, expectAck = true) {
++++    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
++++      return Promise.reject(new Error('Hybrid socket is not connected'));
++++    }
++++    const message = JSON.stringify(payload);
++++    if (!expectAck) {
++++      this.socket.send(message);
++++      return Promise.resolve(this.lastState);
++++    }
++++    return new Promise((resolve, reject) => {
++++      const entry = { timeout: null };
++++      entry.resolve = state => {
++++        if (entry.timeout) {
++++          clearTimeout(entry.timeout);
++++        }
++++        resolve(state);
++++      };
++++      entry.reject = error => {
++++        if (entry.timeout) {
++++          clearTimeout(entry.timeout);
++++        }
++++        reject(error);
++++      };
++++      entry.timeout = setTimeout(() => {
++++        const index = this._pendingStateResolvers.indexOf(entry);
++++        if (index >= 0) {
++++          this._pendingStateResolvers.splice(index, 1);
++++        }
++++        entry.reject(new Error('Hybrid node acknowledgement timed out'));
++++      }, 2000);
++++      this._pendingStateResolvers.push(entry);
++++      this.socket.send(message);
++++    });
++++  }
++++
++++  enable() {
++++    return this._send({ action: 'enable' });
++++  }
++++
++++  disable() {
++++    return this._send({ action: 'disable' });
++++  }
++++
++++  setPhiSource(source) {
++++    return this._send({ action: 'source', value: source });
++++  }
++++
++++  setPhiValue(value) {
++++    return this._send({ action: 'phi', value }, false);
++++  }
++++
++++  setGain(value) {
++++    return this._send({ action: 'gain', value });
++++  }
++++
++++  close() {
++++    if (this.socket) {
++++      this._isClosing = true;
++++      try {
++++        this.socket.close();
++++      } finally {
++++        this._isClosing = false;
++++        this.socket = null;
++++      }
++++    }
++++  }
++++}
++++
++++export class SoundlabAudioEngine {
++++  constructor() {
++++    this.audioContext = null;
++++    this.inputGain = null;
++++    this.filterLow = null;
++++    this.filterMid = null;
++++    this.filterHigh = null;
++++    this.saturationNode = null;
++++    this.saturationGain = null;
++++    this.dryGain = null;
++++    this.wetGain = null;
++++    this.outputGain = null;
++++    this.compressor = null;
++++    this.isPlaying = false;
++++    this.parameters = {
++++      mix: 0.0,
++++    };
++++    this.hybridMode = false;
++++    this.hybridClient = null;
++++    this.hybridMetricsListeners = new Set();
++++    this.hybridStateListeners = new Set();
++++    this.latestHybridMetrics = null;
++++  }
++++
++++  async ensureContext() {
++++    if (this.audioContext) {
++++      return;
++++    }
++++
++++    const ContextCtor = window.AudioContext || window.webkitAudioContext;
++++    if (!ContextCtor) {
++++      throw new Error('Web Audio API is not supported in this browser.');
++++    }
++++
++++    this.audioContext = new ContextCtor();
++++    await this.audioContext.resume();
++++
++++    this._initializeGraph();
++++  }
++++
++++  _initializeGraph() {
++++    this.inputGain = this.audioContext.createGain();
++++    this.inputGain.gain.value = 1.0;
++++
++++    this.filterLow = this.audioContext.createBiquadFilter();
++++    this.filterLow.type = 'lowshelf';
++++    this.filterLow.frequency.value = 120;
++++
++++    this.filterMid = this.audioContext.createBiquadFilter();
++++    this.filterMid.type = 'peaking';
++++    this.filterMid.frequency.value = 1000;
++++    this.filterMid.Q.value = 1.25;
++++
++++    this.filterHigh = this.audioContext.createBiquadFilter();
++++    this.filterHigh.type = 'highshelf';
++++    this.filterHigh.frequency.value = 6000;
++++
++++    this.saturationNode = this.audioContext.createWaveShaper();
++++    this.saturationGain = this.audioContext.createGain();
++++    this.saturationGain.gain.value = 1.0;
++++
++++    this.compressor = this.audioContext.createDynamicsCompressor();
++++    this.compressor.attack.value = 0.003;
++++    this.compressor.release.value = 0.25;
++++
++++    this.outputGain = this.audioContext.createGain();
++++    this.outputGain.gain.value = 0.9;
++++
++++    this.inputGain.connect(this.filterLow);
++++    this.filterLow.connect(this.filterMid);
++++    this.filterMid.connect(this.filterHigh);
++++
++++    this.dryGain = this.audioContext.createGain();
++++    this.wetGain = this.audioContext.createGain();
++++    this.dryGain.gain.value = 1.0;
++++    this.wetGain.gain.value = 0.0;
++++
++++    this.filterHigh.connect(this.dryGain);
++++    this.filterHigh.connect(this.saturationNode);
++++    this.saturationNode.connect(this.saturationGain);
++++    this.saturationGain.connect(this.wetGain);
++++
++++    const dryWetMerger = this.audioContext.createGain();
++++    this.dryGain.connect(dryWetMerger);
++++    this.wetGain.connect(dryWetMerger);
++++    dryWetMerger.connect(this.compressor);
++++
++++    this.compressor.connect(this.outputGain);
++++    this.outputGain.connect(this.audioContext.destination);
++++
++++    this.updateMix = value => {
++++      const now = this.audioContext.currentTime;
++++      const dry = 1.0 - value;
++++      const wet = value;
++++      this.dryGain.gain.setTargetAtTime(dry, now, 0.05);
++++      this.wetGain.gain.setTargetAtTime(wet, now, 0.05);
++++      this.parameters.mix = value;
++++    };
++++  }
++++
++++  connectSource(node) {
++++    if (!this.inputGain) {
++++      throw new Error('Audio graph has not been initialized. Call ensureContext() first.');
++++    }
++++    node.connect(this.inputGain);
++++  }
++++
++++  disconnectSource(node) {
++++    try {
++++      node.disconnect(this.inputGain);
++++    } catch (error) {
++++      console.warn('Attempted to disconnect an unknown source node.', error);
++++    }
++++  }
++++
++++  async startAudio() {
++++    await this.ensureContext();
++++
++++    window.soundlabTransport = window.soundlabTransport || {
++++      playing: false,
++++      phiMode: false,
++++      hybrid: false,
++++      lastStop: null,
++++    };
++++    window.soundlabTransport.playing = true;
++++    window.soundlabTransport.hybrid = this.hybridMode;
++++
++++    this.isPlaying = true;
++++
++++    this.schedulePhiModulation().then(() => {
++++      window.soundlabTransport.playing = false;
++++      window.soundlabTransport.phiMode = false;
++++      window.soundlabTransport.hybrid = false;
++++      this.isPlaying = false;
++++      const stopControl = document.querySelector('#stopButton') || document.querySelector('#stopBtn');
++++      if (stopControl) {
++++        stopControl.disabled = true;
++++      }
++++    });
++++    console.log('Audio started');
++++    const stopControl = document.querySelector('#stopButton') || document.querySelector('#stopBtn');
++++    if (stopControl) {
++++      stopControl.disabled = false;
++++    }
++++  }
++++
++++  async stopAudio() {
++++    if (!this.audioContext) {
++++      return;
++++    }
++++
++++    try {
++++      await this.audioContext.close();
++++    } finally {
++++      this.audioContext = null;
++++      this.inputGain = null;
++++      this.filterLow = null;
++++      this.filterMid = null;
++++      this.filterHigh = null;
++++      this.saturationNode = null;
++++      this.saturationGain = null;
++++      this.dryGain = null;
++++      this.wetGain = null;
++++      this.outputGain = null;
++++      this.compressor = null;
++++    }
++++
++++    if (this.hybridClient) {
++++      try {
++++        await this.hybridClient.disable();
++++      } catch (error) {
++++        console.warn('Failed to disable hybrid node during shutdown', error);
++++      }
++++      this.hybridClient.close();
++++    }
++++
++++    window.soundlabTransport = {
++++      playing: false,
++++      phiMode: false,
++++      hybrid: false,
++++      lastStop: performance.now(),
++++    };
++++    this.hybridMode = false;
++++    this.isPlaying = false;
++++    console.log('Audio stopped');
++++
++++    const stopControl = document.querySelector('#stopButton') || document.querySelector('#stopBtn');
++++    if (stopControl) {
++++      stopControl.disabled = true;
++++    }
++++  }
++++
++++  async schedulePhiModulation() {
++++    return Promise.resolve();
++++  }
++++
++++  _defaultHybridUrl() {
++++    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
++++    return `${protocol}//${window.location.host}/ws/hybrid`;
++++  }
++++
++++  async _ensureHybridClient(options = {}) {
++++    const targetUrl = options.websocketUrl || (this.hybridClient && this.hybridClient.url) || this._defaultHybridUrl();
++++    if (this.hybridClient && this.hybridClient.url !== targetUrl) {
++++      this.hybridClient.close();
++++      this.hybridClient = null;
++++    }
++++
++++    if (!this.hybridClient) {
++++      this.hybridClient = new HybridWebSocketClient(targetUrl, {
++++        onMetrics: metrics => this._emitHybridMetrics(metrics),
++++        onState: state => this._emitHybridState(state),
++++        onError: error => console.error('Hybrid node error', error),
++++      });
++++    }
++++
++++    return this.hybridClient.connect();
++++  }
++++
++++  _emitHybridMetrics(metrics) {
++++    this.latestHybridMetrics = metrics;
++++    this.hybridMetricsListeners.forEach(listener => {
++++      try {
++++        listener(metrics);
++++      } catch (error) {
++++        console.error('Hybrid metrics listener error', error);
++++      }
++++    });
++++  }
++++
++++  _emitHybridState(state) {
++++    if (!state) {
++++      return;
++++    }
++++    window.soundlabTransport = window.soundlabTransport || {
++++      playing: false,
++++      phiMode: false,
++++      hybrid: false,
++++      lastStop: null,
++++    };
++++    if (Object.prototype.hasOwnProperty.call(state, 'enabled')) {
++++      window.soundlabTransport.hybrid = Boolean(state.enabled);
++++      this.hybridMode = Boolean(state.enabled);
++++    }
++++    this.hybridStateListeners.forEach(listener => {
++++      try {
++++        listener(state);
++++      } catch (error) {
++++        console.error('Hybrid state listener error', error);
++++      }
++++    });
++++  }
++++
++++  onHybridMetrics(listener) {
++++    if (typeof listener !== 'function') {
++++      return () => {};
++++    }
++++    this.hybridMetricsListeners.add(listener);
++++    if (this.latestHybridMetrics) {
++++      try {
++++        listener(this.latestHybridMetrics);
++++      } catch (error) {
++++        console.error('Hybrid metrics listener error', error);
++++      }
++++    }
++++    return () => {
++++      this.hybridMetricsListeners.delete(listener);
++++    };
++++  }
++++
++++  onHybridState(listener) {
++++    if (typeof listener !== 'function') {
++++      return () => {};
++++    }
++++    this.hybridStateListeners.add(listener);
++++    return () => {
++++      this.hybridStateListeners.delete(listener);
++++    };
++++  }
++++
++++  async setHybridMode(enabled, options = {}) {
++++    if (enabled) {
++++      await this.ensureContext();
++++      await this._ensureHybridClient(options);
++++      const state = await this.hybridClient.enable();
++++      if (options.phiSource) {
++++        await this.hybridClient.setPhiSource(options.phiSource);
++++      }
++++      this.hybridMode = true;
++++      window.soundlabTransport.hybrid = true;
++++      return state;
++++    }
++++
++++    if (this.hybridClient) {
++++      try {
++++        await this.hybridClient.disable();
++++      } catch (error) {
++++        console.warn('Hybrid disable request failed', error);
++++      }
++++    }
++++    window.soundlabTransport = window.soundlabTransport || {
++++      playing: false,
++++      phiMode: false,
++++      hybrid: false,
++++      lastStop: null,
++++    };
++++    window.soundlabTransport.hybrid = false;
++++    this.hybridMode = false;
++++    return this.hybridClient ? this.hybridClient.lastState : null;
++++  }
++++
++++  async setHybridPhiSource(source) {
++++    if (!this.hybridClient) {
++++      await this._ensureHybridClient();
++++    }
++++    return this.hybridClient.setPhiSource(source);
++++  }
++++
++++  async setHybridPhiValue(value) {
++++    if (!this.hybridClient) {
++++      await this._ensureHybridClient();
++++    }
++++    return this.hybridClient.setPhiValue(value);
++++  }
++++
++++  async setHybridGain(value) {
++++    if (!this.hybridClient) {
++++      await this._ensureHybridClient();
++++    }
++++    return this.hybridClient.setGain(value);
++++  }
++++}
++++
++++const engineInstance = new SoundlabAudioEngine();
++++window.soundlabAudioEngine = engineInstance;
++++export default engineInstance;
+++ 
+++EOF
+++)
++\ No newline at end of file
++diff --git a/js/soundlab-hybrid.js b/js/soundlab-hybrid.js
++new file mode 100644
++index 0000000..0253714
++--- /dev/null
+++++ b/js/soundlab-hybrid.js
++@@ -0,0 +1,156 @@
+++import soundlabAudioEngine from '../static/js/soundlab-audio-engine.js';
+++
+++function formatMetric(value, fallback = '--') {
+++  if (typeof value !== 'number' || Number.isNaN(value)) {
+++    return fallback;
+++  }
+++  return value.toFixed(3);
+++}
+++
+++function computeWebSocketUrl() {
+++  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+++  return `${protocol}//${window.location.host}/ws/hybrid`;
+++}
+++
+++export function initializeHybridControls() {
+++  const toggle = document.getElementById('hybridModeToggle');
+++  const sourceSelect = document.getElementById('phiSourceSelect');
+++  const statusEl = document.getElementById('hybridStatus');
+++  const metricsContainer = document.getElementById('hybridMetrics');
+++
+++  if (!toggle || !sourceSelect) {
+++    return;
+++  }
+++
+++  let unsubscribeMetrics = null;
+++  let unsubscribeState = null;
+++
+++  function updateMetrics(metrics) {
+++    if (!metricsContainer || !metrics) {
+++      return;
+++    }
+++
+++    const iciEl = metricsContainer.querySelector('[data-metric="ici"]');
+++    const coherenceEl = metricsContainer.querySelector('[data-metric="coherence"]');
+++    const centroidEl = metricsContainer.querySelector('[data-metric="centroid"]');
+++    const latencyEl = metricsContainer.querySelector('[data-metric="latency"]');
+++    const cpuEl = metricsContainer.querySelector('[data-metric="cpu"]');
+++
+++    if (iciEl) {
+++      iciEl.textContent = `ICI: ${formatMetric(metrics.ici)}`;
+++    }
+++    if (coherenceEl) {
+++      coherenceEl.textContent = `Coherence: ${formatMetric(metrics.coherence)}`;
+++    }
+++    if (centroidEl) {
+++      centroidEl.textContent = `Centroid: ${formatMetric(metrics.centroid)}`;
+++    }
+++    if (latencyEl) {
+++      const latency = typeof metrics.latencyMs === 'number' ? metrics.latencyMs.toFixed(2) : '--';
+++      latencyEl.textContent = `Latency: ${latency} ms`;
+++    }
+++    if (cpuEl) {
+++      const cpu = typeof metrics.cpuLoad === 'number' ? (metrics.cpuLoad * 100).toFixed(1) : '--';
+++      cpuEl.textContent = `CPU: ${cpu}%`;
+++    }
+++  }
+++
+++  function setStatus(message) {
+++    if (statusEl) {
+++      statusEl.textContent = message;
+++    }
+++  }
+++
+++  unsubscribeState = soundlabAudioEngine.onHybridState(state => {
+++    if (!state) {
+++      return;
+++    }
+++    const enabled = Boolean(state.enabled);
+++    if (enabled && !toggle.checked) {
+++      toggle.checked = true;
+++      setStatus('Hybrid mode enabled remotely. Monitoring analog bridge.');
+++      if (!unsubscribeMetrics) {
+++        unsubscribeMetrics = soundlabAudioEngine.onHybridMetrics(updateMetrics);
+++      }
+++    } else if (!enabled && toggle.checked) {
+++      toggle.checked = false;
+++      if (unsubscribeMetrics) {
+++        unsubscribeMetrics();
+++        unsubscribeMetrics = null;
+++      }
+++      setStatus('Hybrid mode disabled remotely. Metrics paused.');
+++    }
+++  });
+++
+++  toggle.addEventListener('change', async () => {
+++    const enabled = toggle.checked;
+++    if (enabled) {
+++      setStatus('Connecting to hybrid node...');
+++      try {
+++        const phiSource = sourceSelect.value;
+++        const websocketUrl = computeWebSocketUrl();
+++        if (unsubscribeMetrics) {
+++          unsubscribeMetrics();
+++          unsubscribeMetrics = null;
+++        }
+++        const enableState = await soundlabAudioEngine.setHybridMode(true, { phiSource, websocketUrl });
+++        if (!enableState || enableState.enabled !== true) {
+++          throw new Error('Hybrid node did not acknowledge enable request');
+++        }
+++        unsubscribeMetrics = soundlabAudioEngine.onHybridMetrics(updateMetrics);
+++        setStatus('Hybrid mode active. Monitoring analog bridge.');
+++        const stopBtn = document.getElementById('stopBtn');
+++        if (stopBtn && stopBtn.disabled) {
+++          stopBtn.disabled = false;
+++        }
+++      } catch (error) {
+++        console.error('Failed to enable hybrid mode', error);
+++        toggle.checked = false;
+++        setStatus(`Hybrid mode failed: ${error?.message || error}`);
+++      }
+++    } else {
+++      try {
+++        const disableState = await soundlabAudioEngine.setHybridMode(false);
+++        if (disableState && disableState.enabled) {
+++          throw new Error('Hybrid node reported active after disable');
+++        }
+++        setStatus('Hybrid mode idle. External metrics offline.');
+++      } catch (error) {
+++        console.error('Failed to disable hybrid mode', error);
+++        setStatus(`Hybrid disable failed: ${error?.message || error}`);
+++      }
+++      if (unsubscribeMetrics) {
+++        unsubscribeMetrics();
+++        unsubscribeMetrics = null;
+++      }
+++    }
+++  });
+++
+++  sourceSelect.addEventListener('change', async () => {
+++    if (!toggle.checked) {
+++      setStatus(`Φ source queued: ${sourceSelect.selectedOptions[0]?.text || sourceSelect.value}`);
+++      return;
+++    }
+++    try {
+++      await soundlabAudioEngine.setHybridPhiSource(sourceSelect.value);
+++      setStatus(`Φ source set to ${sourceSelect.selectedOptions[0]?.text || sourceSelect.value}.`);
+++    } catch (error) {
+++      console.error('Failed to update Φ source', error);
+++      setStatus(`Φ source update failed: ${error?.message || error}`);
+++    }
+++  });
+++
+++  window.addEventListener('beforeunload', () => {
+++    if (unsubscribeMetrics) {
+++      unsubscribeMetrics();
+++      unsubscribeMetrics = null;
+++    }
+++    if (unsubscribeState) {
+++      unsubscribeState();
+++      unsubscribeState = null;
+++    }
+++    if (toggle.checked) {
+++      soundlabAudioEngine.setHybridMode(false);
+++    }
+++  });
+++}
++diff --git a/js/soundlab-main.js b/js/soundlab-main.js
++index b15c19e..28673c5 100644
++--- a/js/soundlab-main.js
+++++ b/js/soundlab-main.js
++@@ -1,6 +1,7 @@
++ import { initLogging } from './soundlab-logging.js';
++ import { updateMatrix } from './soundlab-audio-core.js';
++ import { initializeEventHandlers } from './soundlab-events.js';
+++import { initializeHybridControls } from './soundlab-hybrid.js';
++ 
++ const FALLBACK_PARTIALS = {
++   'partials/config-loader.html': `
++@@ -175,6 +176,35 @@ const FALLBACK_PARTIALS = {
++     </button>
++   </div>
++ </div>
+++
+++<div class="panel panel--spaced" id="hybridPanel">
+++  <h2>Hybrid Mode Bridge</h2>
+++  <div class="hybrid-controls" role="group" aria-label="Hybrid mode controls">
+++    <label class="hybrid-toggle" for="hybridModeToggle">
+++      <input type="checkbox" id="hybridModeToggle" />
+++      <span>Enable Hybrid Mode</span>
+++    </label>
+++    <div class="hybrid-field">
+++      <label for="phiSourceSelect">Φ Source</label>
+++      <select id="phiSourceSelect">
+++        <option value="internal">Internal Synth</option>
+++        <option value="external_ws">External WebSocket</option>
+++        <option value="analog_sensor">Analog Sensor Array</option>
+++        <option value="manual">Manual Slider</option>
+++      </select>
+++    </div>
+++  </div>
+++  <div class="hybrid-status" id="hybridStatus" role="status" aria-live="polite">
+++    Hybrid mode idle. External metrics offline.
+++  </div>
+++  <div class="hybrid-metrics" id="hybridMetrics" aria-live="polite">
+++    <span data-metric="ici">ICI: --</span>
+++    <span data-metric="coherence">Coherence: --</span>
+++    <span data-metric="centroid">Centroid: --</span>
+++    <span data-metric="latency">Latency: -- ms</span>
+++    <span data-metric="cpu">CPU: --%</span>
+++  </div>
+++</div>
++ `,
++   'partials/eq-panel.html': `
++ <div class="panel">
++@@ -361,6 +391,7 @@ async function initializeSoundlab() {
++   updateMatrix();
++   initLogging();
++   initializeEventHandlers();
+++  initializeHybridControls();
++ }
++ 
++ if (document.readyState === 'loading') {
++diff --git a/partials/transport-controls.html b/partials/transport-controls.html
++index c9ba70b..798a9e0 100644
++--- a/partials/transport-controls.html
+++++ b/partials/transport-controls.html
++@@ -159,3 +159,32 @@
++     </button>
++   </div>
++ </div>
+++
+++<div class="panel panel--spaced" id="hybridPanel">
+++  <h2>Hybrid Mode Bridge</h2>
+++  <div class="hybrid-controls" role="group" aria-label="Hybrid mode controls">
+++    <label class="hybrid-toggle" for="hybridModeToggle">
+++      <input type="checkbox" id="hybridModeToggle" />
+++      <span>Enable Hybrid Mode</span>
+++    </label>
+++    <div class="hybrid-field">
+++      <label for="phiSourceSelect">Φ Source</label>
+++      <select id="phiSourceSelect">
+++        <option value="internal">Internal Synth</option>
+++        <option value="external_ws">External WebSocket</option>
+++        <option value="analog_sensor">Analog Sensor Array</option>
+++        <option value="manual">Manual Slider</option>
+++      </select>
+++    </div>
+++  </div>
+++  <div class="hybrid-status" id="hybridStatus" role="status" aria-live="polite">
+++    Hybrid mode idle. External metrics offline.
+++  </div>
+++  <div class="hybrid-metrics" id="hybridMetrics" aria-live="polite">
+++    <span data-metric="ici">ICI: --</span>
+++    <span data-metric="coherence">Coherence: --</span>
+++    <span data-metric="centroid">Centroid: --</span>
+++    <span data-metric="latency">Latency: -- ms</span>
+++    <span data-metric="cpu">CPU: --%</span>
+++  </div>
+++</div>
++diff --git a/report.diff b/report.diff
++new file mode 100644
++index 0000000..65fce5f
++--- /dev/null
+++++ b/report.diff
++@@ -0,0 +1,107 @@
+++ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
+++diff --git a/docs/soundlab-diagnostic-report.md b/docs/soundlab-diagnostic-report.md
+++new file mode 100644
+++index 0000000000000000000000000000000000000000..d36bc6a3ffa1e7dbd943c3d4258e38269ec0d868
+++--- /dev/null
++++++ b/docs/soundlab-diagnostic-report.md
+++@@ -0,0 +1,97 @@
++++# Soundlab Modular Diagnostics
++++
++++## 1. UI Element Audit
++++### Interactive inventory
++++| Element | Location | Bound handler | Notes |
++++| --- | --- | --- | --- |
++++| `#startBtn` | Transport controls partial | `initAudio()` click listener enables graph bootstrap and status messaging.【F:partials/transport-controls.html†L3-L60】【F:js/soundlab-events.js†L69-L75】 | Correctly disables itself after initialization and enables downstream actions.【F:js/soundlab-audio-core.js†L248-L259】 |
++++| `#generateBtn` | Transport controls partial | `generateTone()` click listener starts sine source and enables stop control.【F:partials/transport-controls.html†L11-L27】【F:js/soundlab-events.js†L69-L75】【F:js/soundlab-audio-core.js†L262-L289】 | Disabled until audio engine starts, preventing orphan presses.【F:js/soundlab-audio-core.js†L248-L257】 |
++++| `#stopBtn` | Transport controls partial | Composite click handler stops tone/file/Φ/image playback.【F:partials/transport-controls.html†L28-L47】【F:js/soundlab-events.js†L71-L75】 | Re-disabled after `stopAudio()`, but not after Φ auto-complete (see §3).【F:js/soundlab-audio-core.js†L338-L358】【F:js/soundlab-phi.js†L258-L285】 |
++++| `#loadBtn` / `#fileInput` | Transport controls partial | Button triggers hidden file input; `change` wired to `loadAudioFile()` with audio-context guard.【F:partials/transport-controls.html†L48-L69】【F:js/soundlab-events.js†L76-L80】【F:js/soundlab-audio-core.js†L291-L336】 | Status messaging steers users back to Start Audio if context missing.【F:js/soundlab-audio-core.js†L295-L305】 |
++++| `#loadImageBtn` / `#imageInput` | Transport controls partial | Loads image into canvas, reveals panel, primes status.【F:partials/transport-controls.html†L70-L99】【F:js/soundlab-events.js†L80-L84】【F:js/soundlab-image.js†L9-L62】 | Leaves Play button enabled even when audio context absent; playback simply no-ops (see §4). |
++++| `#playImageBtn` | Transport controls partial | Toggles between `startImagePlayback()` and `stopImagePlayback()` with status copy.【F:partials/transport-controls.html†L88-L99】【F:js/soundlab-events.js†L83-L84】【F:js/soundlab-image.js†L64-L115】 | Button label swaps on toggle; disabled until image present.【F:js/soundlab-image.js†L46-L55】 |
++++| Φ controls (`#phiMode`, `#baseFreq`, `#duration`, `#driveCurve`, `#frequencyRange`, `#runPhiBtn`, `#restoreParamsBtn`, `#diagnosticBtn`) | Φ panel partial | Mode runner reads values via `getParams()`; restore & diagnostic buttons wired to recovery/log routines.【F:partials/transport-controls.html†L101-L176】【F:js/soundlab-events.js†L84-L90】【F:js/soundlab-phi.js†L71-L337】【F:js/soundlab-utils.js†L39-L59】 | `#restoreParamsBtn` remains disabled until a Φ run captures state.【F:js/soundlab-phi.js†L266-L275】 |
++++| EQ & saturation knobs (`.knob`) | EQ/saturation partials | Mouse, keyboard, and focus handlers sync UI, logs, and audio params with readiness checks.【F:partials/eq-panel.html†L4-L16】【F:partials/saturation-panel.html†L4-L16】【F:js/soundlab-events.js†L110-L238】 | Prevents edits before engine start via `isEqReady()` messaging.【F:js/soundlab-audio-core.js†L205-L214】 |
++++| Image sonification controls (`#sonifyMode`, `#scanSpeed`, `#freqMin`, `#freqMax`) | Image panel partial | Slider updates live label; values consumed during playback per mode.【F:partials/image-sonification.html†L1-L36】【F:js/soundlab-events.js†L97-L101】【F:js/soundlab-image.js†L117-L330】 | Panel stays hidden until image loads, preserving layout integrity.【F:js/soundlab-image.js†L42-L55】 |
++++| Logging controls (`#clearLogBtn`, `#exportLogBtn`, `#exportJsonBtn`) | Log partial | Click handlers reset log or export CSV/JSON via Blob download.【F:partials/log-and-matrix.html†L3-L33】【F:js/soundlab-events.js†L103-L105】【F:js/soundlab-logging.js†L18-L144】 | Shortcut legend auto-populates from `data-shortcut` attributes.【F:js/soundlab-logging.js†L146-L164】 |
++++| Config dropdown `#configSelect` | Config loader partial | `change` handler fetches JSON, normalizes, and applies to UI/matrix.【F:partials/config-loader.html†L1-L8】【F:js/soundlab-events.js†L92-L95】【F:js/soundlab-config.js†L4-L142】 |
++++| Status displays (`#status`, `#statusTip`, `#shortcutLegend`, log counters) | Transport & log partials | Updated across modules to reflect lifecycle state.【F:partials/transport-controls.html†L101-L176】【F:partials/log-and-matrix.html†L3-L33】【F:js/soundlab-audio-core.js†L248-L359】【F:js/soundlab-logging.js†L48-L164】 | Provide user feedback for readiness, diagnostics, and logging. |
++++
++++### Findings
++++* All declared interactive elements are wired to handlers after partial loading; no orphaned IDs detected because `loadPartials()` awaits each include before binding events.【F:js/soundlab-main.js†L335-L364】【F:js/soundlab-events.js†L66-L107】
++++* Shortcut legend covers every control exposing a `data-shortcut`, ensuring accessibility parity between mouse and keyboard workflows.【F:js/soundlab-logging.js†L146-L164】
++++* Event registration assumes partial markup availability; if a new include fails without a fallback snippet, `document.getElementById(...).addEventListener` would throw. Consider null-guards or `querySelector` option chaining for future extensibility.【F:js/soundlab-events.js†L69-L107】【F:js/soundlab-main.js†L335-L349】
++++
++++## 2. Audio Graph Validation
++++### Observations
++++* `initAudio()` constructs a linear chain (source → EQ filters → waveshaper → gain → analyser → destination), seeds analyser buffers, and primes UI state.【F:js/soundlab-audio-core.js†L216-L260】
++++* `generateTone()`/`loadAudioFile()` rebuild upstream sources while reusing the shared processing chain via `ensureProcessingChain()`.【F:js/soundlab-audio-core.js†L262-L333】
++++* `stopAudio()` tears down active oscillator/buffer sources and restores transport controls, but leaves the processing chain hot for subsequent playback.【F:js/soundlab-audio-core.js†L338-L359】
++++
++++### Issues & recommendations
++++| Severity | Issue | Evidence | Recommendation |
++++| --- | --- | --- | --- |
++++| **High** | Saturation mix removes the dry signal entirely: the waveshaper curve is scaled by `params.mix/100`, so the default mix of `0` silences all audio traversing the chain.【F:js/soundlab-audio-core.js†L19-L106】 | Implement a parallel dry path or compute a crossfaded output (e.g., mix = 0 routes dry signal, mix = 100 fully wet). At minimum, default mix should be 100% until blending is supported. |
++++| Medium | `ensureProcessingChain()` repeatedly disconnects nodes on each call; while safe, it risks transient pops under load and omits context resume for suspended states.【F:js/soundlab-audio-core.js†L56-L92】 | Cache a flag to skip redundant disconnect/reconnect cycles and call `audioContext.resume()` inside `initAudio()` for Safari/Chrome autoplay policies. |
++++| Medium | `stopAudio()` does not call `setAudioPlaying(false)`, while Φ mode uses that flag. Divergent state tracking can desynchronize shared status helpers.【F:js/soundlab-audio-core.js†L338-L359】【F:js/soundlab-phi.js†L258-L285】 | Normalize on the exported setter when toggling playback so UI components share the same state source. |
++++
++++## 3. Φ Mode Dispatch and Recovery
++++### Observations
++++* `runPhiMode()` validates the audio graph, stops prior Φ synthesis, then branches across tone/AM/FM/interval/harmonic implementations that share envelope helpers and parameter sampling from `getParams()`.【F:js/soundlab-phi.js†L71-L256】【F:js/soundlab-utils.js†L39-L59】
++++* On completion, last-run parameters are cached and the restore button is enabled; `restoreLastParams()` hydrates form inputs and announces status.【F:js/soundlab-phi.js†L258-L313】
++++* `diagnosticParamsLog()` prints structured details to the console and echoes a concise summary in the status banner.【F:js/soundlab-phi.js†L316-L333】
++++
++++### Issues & recommendations
++++| Severity | Issue | Evidence | Recommendation |
++++| --- | --- | --- | --- |
++++| Medium | When a Φ run times out naturally, the stop button remains enabled even though synthesis is halted, inviting redundant presses.【F:js/soundlab-phi.js†L258-L285】 | Disable `#stopBtn` inside the timeout callback (and re-enable Generate) to keep transport UI truthful without relying on manual stop. |
++++| Medium | Parameter recovery is session-bound only; reloading the page clears `lastParams`, reducing Φ workflow continuity.【F:js/soundlab-phi.js†L10-L44】【F:js/soundlab-phi.js†L266-L275】 | Persist the last Φ payload into `localStorage` (with timestamp) and hydrate during initialization to survive reloads. |
++++| Low | `diagnosticParamsLog()` relies on the console for detail, offering no in-app history beyond transient status text.【F:js/soundlab-phi.js†L316-L333】 | Pipe diagnostic output into the existing logging panel or a dedicated diagnostics feed for traceability. |
++++
++++## 4. Image Sonification Workflow
++++### Observations
++++* Image loading scales artwork to ≤512 px, reveals the sonification panel, and populates metadata before asserting audio readiness.【F:js/soundlab-image.js†L9-L58】
++++* Playback toggles update button text and status messaging while dispatching to spectral, harmonic, FM, or additive renderers that interpret pixel data differently.【F:js/soundlab-image.js†L64-L330】
++++* Each renderer advances a column counter, calls `drawScanIndicator()`, and halts automatically at image bounds.【F:js/soundlab-image.js†L152-L343】
++++
++++### Issues & recommendations
++++| Severity | Issue | Evidence | Recommendation |
++++| --- | --- | --- | --- |
++++| Medium | Loading an image before the audio engine is started leaves `#playImageBtn` enabled, yet subsequent playback simply returns without user feedback when `audioContext` is null.【F:js/soundlab-image.js†L46-L75】 | Either defer enabling Play until `getAudioContext()` succeeds or display a status prompt when `startImagePlayback()` aborts due to a missing context. |
++++| Medium | FM mode allocates a persistent `GainNode` (`modGain`) that is never stored in `imageOscillators`, so `stopImagePlayback()` cannot disconnect it explicitly.【F:js/soundlab-image.js†L222-L277】 | Track auxiliary nodes alongside oscillators or add a dedicated cleanup routine to prevent stray graph attachments during repeated toggles. |
++++| Medium | Harmonic and additive modes spawn numerous short-lived oscillators without tracking references, so stopping playback midway cannot immediately halt grains in flight.【F:js/soundlab-image.js†L187-L330】 | Maintain a pool of active grains (oscillators & gains) to allow forced teardown when the user presses Stop. |
++++| Low | `freqMin`/`freqMax` inputs accept any numeric values without validation, which can lead to silent or aliasing-prone spectra.【F:js/soundlab-image.js†L122-L330】 | Clamp ranges inside playback routines and surface validation errors near the form fields. |
++++
++++## 5. Logging and Export Hooks
++++### Observations
++++* Parameter deltas, derived “force/work,” and running totals populate both the DOM log and downloadable CSV/JSON exports.【F:js/soundlab-logging.js†L18-L144】
++++* Clearing the log resets counters and redraws the placeholder; shortcut legend generation keeps keyboard hints in sync with UI changes.【F:js/soundlab-logging.js†L92-L164】
++++
++++### Issues & recommendations
++++| Severity | Issue | Evidence | Recommendation |
++++| --- | --- | --- | --- |
++++| Medium | Only knob interactions trigger logging; Φ mode actions, image scans, and transport events leave no audit trail.【F:js/soundlab-events.js†L110-L287】【F:js/soundlab-phi.js†L71-L333】【F:js/soundlab-image.js†L64-L330】 | Extend `logParameterChange()` usage (or introduce event-level logging) for Φ dispatch, image playback toggles, and transport state changes to achieve complete workflow coverage. |
++++| Low | CSV/JSON exports assume synchronous Blob support and do not report success/failure in the UI.【F:js/soundlab-logging.js†L99-L144】 | Update status text on export completion (or failure) so users receive inline confirmation without relying on browser download UI. |
++++
++++## 6. Modularization Integrity Check
++++### Observations
++++* `loadPartials()` fetches each include sequentially, falling back to baked-in HTML snippets when a request fails, guaranteeing required IDs exist before handler registration.【F:js/soundlab-main.js†L5-L369】
++++* Initialization order—partials, matrix seed, logging, then events—keeps dependencies satisfied (matrix grid exists before `updateMatrix()`, log elements exist before `initLogging()`, etc.).【F:js/soundlab-main.js†L352-L364】
++++* Audio state is centralized in `soundlab-audio-core.js`, and shared getters ensure other modules read from the same context instance.【F:js/soundlab-audio-core.js†L32-L55】
++++
++++### Issues & recommendations
++++| Severity | Issue | Evidence | Recommendation |
++++| --- | --- | --- | --- |
++++| Medium | Sequential partial loading can delay first paint and input readiness if any include stalls.【F:js/soundlab-main.js†L352-L356】 | Load partials in parallel (`Promise.all`) while preserving post-load initialization sequencing to reduce perceived startup latency. |
++++| Low | Event binding assumes fallback HTML parity; if a future partial omits an ID, initialization will throw and halt setup.【F:js/soundlab-events.js†L69-L107】 | Wrap each `getElementById` call with optional chaining or guard clauses to improve resilience during iterative modular refactors. |
++++
++++## 7. Summary Report
++++| Area | Issues Found | Severity | Impact | Suggested Fixes | Missing Tests | Confidence |
++++| --- | --- | --- | --- | --- | --- | --- |
++++| Audio core | Dry/wet mix bug; redundant reconnects; inconsistent playback state flag | High / Medium | Silence by default, potential pops, state drift | Introduce proper mix bus; memoize connections; standardize `setAudioPlaying` usage | No automated Web Audio regression suite | Medium |
++++| Φ mode | Stop button state drift; session-only recovery; diagnostic visibility | Medium / Low | Confusing transport UI; lost presets across reloads; limited traceability | Disable stop post-timeout; persist last params; surface diagnostics in UI | No preset dispatch tests | Medium |
++++| Image sonification | Audio-context gating; FM cleanup gap; granular teardown; input validation | Medium / Low | User confusion, lingering nodes, noisy stoppage, invalid spectra | Gate Play button via context; track auxiliary nodes; maintain grain pool; clamp frequency inputs | No mode-by-mode playback tests | Low |
++++| Logging | Coverage gaps; export feedback | Medium / Low | Incomplete audit trail; unclear export results | Log Φ/image/transport actions; update status after exports | No log export unit tests | Medium |
++++| Modularization | Sequential include loading; rigid binding assumptions | Medium / Low | Slower initial render; brittle future changes | Parallelize fetches; add binding guards | No integration smoke tests | Medium |
++++
++++**Overall:** The system is structurally sound, but the high-severity saturation mix defect and several medium-level lifecycle gaps merit prioritization. Confidence is medium because review relied on static analysis; targeted runtime tests (especially across browsers for Web Audio) are still required.
+++ 
+++EOF
+++)
++\ No newline at end of file
++diff --git a/requirements.txt b/requirements.txt
++new file mode 100644
++index 0000000..a069b0a
++--- /dev/null
+++++ b/requirements.txt
++@@ -0,0 +1,4 @@
+++fastapi>=0.111.0
+++uvicorn[standard]>=0.27.0
+++sounddevice>=0.4.6
+++numpy>=1.24.0
++diff --git a/server/__init__.py b/server/__init__.py
++index 2daac14..31d8cfa 100644
++--- a/server/__init__.py
+++++ b/server/__init__.py
++@@ -1,7 +1,5 @@
++-"""
++-Soundlab Audio Engine Integration Server
++-Routes audio through D-ASE ChromaticFieldProcessor for real-time Φ-modulated processing
++-"""
+++"""Hybrid node server package for Chromatic Cognition."""
++ 
++-__version__ = "1.0.0"
++-__author__ = "Soundlab Team"
+++from .hybrid_node import HybridNode
+++
+++__all__ = ["HybridNode"]
++diff --git a/server/app.py b/server/app.py
++new file mode 100644
++index 0000000..76618d0
++--- /dev/null
+++++ b/server/app.py
++@@ -0,0 +1,99 @@
+++"""FastAPI application exposing the hybrid node WebSocket bridge."""
+++
+++from __future__ import annotations
+++
+++import asyncio
+++import contextlib
+++import logging
+++from typing import Any, Dict
+++
+++from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+++from fastapi.middleware.cors import CORSMiddleware
+++
+++from .hybrid_node import HybridNode
+++
+++LOGGER = logging.getLogger(__name__)
+++
+++app = FastAPI(title="Chromatic Cognition Hybrid Node")
+++app.add_middleware(
+++    CORSMiddleware,
+++    allow_origins=["*"],
+++    allow_credentials=True,
+++    allow_methods=["*"],
+++    allow_headers=["*"],
+++)
+++
+++hybrid_node = HybridNode()
+++
+++
+++@app.on_event("shutdown")
+++async def shutdown_event() -> None:
+++    await hybrid_node.stop()
+++
+++
+++@app.websocket("/ws/hybrid")
+++async def hybrid_socket(websocket: WebSocket) -> None:
+++    await websocket.accept()
+++    queue = await hybrid_node.register_client()
+++    metrics_task = asyncio.create_task(queue.get())
+++    receiver_task = asyncio.create_task(websocket.receive_text())
+++
+++    async def _send_state(state: Dict[str, Any]) -> None:
+++        await websocket.send_json({"type": "state", "payload": state})
+++
+++    try:
+++        await _send_state(hybrid_node.status())
+++        while True:
+++            done, pending = await asyncio.wait(
+++                {metrics_task, receiver_task},
+++                return_when=asyncio.FIRST_COMPLETED,
+++            )
+++
+++            if metrics_task in done:
+++                metrics = metrics_task.result()
+++                await websocket.send_json({"type": "metrics", "payload": metrics})
+++                metrics_task = asyncio.create_task(queue.get())
+++
+++            if receiver_task in done:
+++                message = receiver_task.result()
+++                try:
+++                    state = await hybrid_node.handle_message(message)
+++                    await _send_state(state)
+++                except Exception as err:  # pragma: no cover - defensive guard
+++                    LOGGER.exception("Hybrid message error: %s", err)
+++                    await websocket.send_json({"type": "error", "payload": {"message": str(err)}})
+++                finally:
+++                    receiver_task = asyncio.create_task(websocket.receive_text())
+++
+++            for task in pending:
+++                task.cancel()
+++                with contextlib.suppress(asyncio.CancelledError):
+++                    await task
+++
+++    except WebSocketDisconnect:
+++        LOGGER.info("Hybrid client disconnected")
+++    finally:
+++        hybrid_node.unregister_client(queue)
+++        metrics_task.cancel()
+++        receiver_task.cancel()
+++        with contextlib.suppress(asyncio.CancelledError):
+++            await metrics_task
+++        with contextlib.suppress(asyncio.CancelledError):
+++            await receiver_task
+++        await hybrid_node.stop()
+++
+++
+++def _self_test() -> bool:
+++    """Exercise the websocket endpoint handshake."""
+++
+++    from fastapi.testclient import TestClient
+++
+++    client = TestClient(app)
+++    with client.websocket_connect("/ws/hybrid") as websocket:
+++        initial = websocket.receive_json()
+++        assert initial["type"] == "state"
+++    return True
+++
+++
+++if __name__ == "__main__":
+++    _self_test()
++diff --git a/server/hybrid_node.py b/server/hybrid_node.py
++new file mode 100644
++index 0000000..f22faf6
++--- /dev/null
+++++ b/server/hybrid_node.py
++@@ -0,0 +1,374 @@
+++"""Hybrid audio node bridging analog input to the Chromatic Field processor."""
+++
+++from __future__ import annotations
+++
+++import asyncio
+++import json
+++import logging
+++import math
+++import time
+++from dataclasses import dataclass, field
+++from typing import Any, Dict, Optional, Set
+++
+++try:  # pragma: no cover - optional dependency at runtime
+++    import sounddevice as sd
+++except Exception:  # pragma: no cover - gracefully fall back to simulation
+++    sd = None  # type: ignore
+++
+++try:  # pragma: no cover - optional dependency at runtime
+++    import numpy as np
+++except Exception:  # pragma: no cover
+++    np = None  # type: ignore
+++
+++LOGGER = logging.getLogger(__name__)
+++
+++
+++@dataclass
+++class HybridMetrics:
+++    """Container describing the hybrid node metrics."""
+++
+++    ici: float
+++    coherence: float
+++    centroid: float
+++    phi_value: float
+++    latency_ms: float
+++    cpu_load: float
+++    timestamp: float = field(default_factory=lambda: time.time())
+++
+++    def asdict(self) -> Dict[str, float]:
+++        return {
+++            "ici": round(float(self.ici), 6),
+++            "coherence": round(float(self.coherence), 6),
+++            "centroid": round(float(self.centroid), 6),
+++            "phi": round(float(self.phi_value), 6),
+++            "latencyMs": round(float(self.latency_ms), 3),
+++            "cpuLoad": round(float(self.cpu_load), 4),
+++            "timestamp": float(self.timestamp),
+++        }
+++
+++
+++class ChromaticFieldProcessor:
+++    """Simple processor that derives perceptual metrics from audio blocks."""
+++
+++    def __init__(self, sample_rate: int, channels: int) -> None:
+++        if np is None:
+++            raise RuntimeError("numpy is required for ChromaticFieldProcessor")
+++        self.sample_rate = sample_rate
+++        self.channels = channels
+++        self._window = np.hanning
+++
+++    def process_block(self, block: "np.ndarray", phi_value: float) -> HybridMetrics:
+++        if block.size == 0:
+++            return HybridMetrics(0.0, 0.0, 0.0, phi_value, 0.0, 0.0)
+++
+++        mono = block.mean(axis=1)
+++        windowed = mono * self._window(len(mono))
+++        spectrum = np.fft.rfft(windowed)
+++        magnitude = np.abs(spectrum)
+++        energy = np.mean(magnitude)
+++        ici = float(np.clip(energy / (np.max(magnitude) + 1e-6), 0.0, 1.0))
+++
+++        if block.shape[1] > 1:
+++            ref = block[:, 0]
+++            correlations = []
+++            for channel in block.T[1:]:
+++                numerator = float(np.dot(ref, channel))
+++                denominator = float(np.linalg.norm(ref) * np.linalg.norm(channel) + 1e-9)
+++                correlations.append(numerator / denominator if denominator else 0.0)
+++            coherence = float(np.clip(np.mean(correlations), 0.0, 1.0))
+++        else:
+++            coherence = 1.0
+++
+++        freqs = np.fft.rfftfreq(len(windowed), d=1.0 / self.sample_rate)
+++        spectral_sum = np.sum(magnitude)
+++        if spectral_sum == 0:
+++            centroid = 0.0
+++        else:
+++            centroid = float(np.sum(freqs * magnitude) / spectral_sum)
+++
+++        centroid_norm = float(np.clip(centroid / (self.sample_rate / 2), 0.0, 1.0))
+++
+++        return HybridMetrics(
+++            ici=ici,
+++            coherence=coherence,
+++            centroid=centroid_norm,
+++            phi_value=phi_value,
+++            latency_ms=0.0,
+++            cpu_load=0.0,
+++        )
+++
+++
+++class HybridNode:
+++    """Manages the analog ↔ digital bridge and metric broadcasting."""
+++
+++    def __init__(
+++        self,
+++        sample_rate: int = 48_000,
+++        channels: int = 8,
+++        block_size: int = 256,
+++        processor: Optional[ChromaticFieldProcessor] = None,
+++    ) -> None:
+++        self.sample_rate = sample_rate
+++        self.channels = channels
+++        self.block_size = block_size
+++        self.processor = processor or ChromaticFieldProcessor(sample_rate, channels)
+++
+++        self._stream: Optional[Any] = None
+++        self._active = False
+++        self._hybrid_enabled = False
+++        self._phi_value = 0.0
+++        self._gain = 1.0
+++        self._phi_source = "internal"
+++        self._loop: Optional[asyncio.AbstractEventLoop] = None
+++        self._metrics_clients: Set[asyncio.Queue[Dict[str, float]]] = set()
+++        self._cpu_alpha = 0.25
+++        self._cpu_estimate = 0.0
+++        self._simulate = sd is None
+++        self._simulation_task: Optional[asyncio.Task[None]] = None
+++
+++    @property
+++    def is_active(self) -> bool:
+++        return self._active
+++
+++    @property
+++    def phi_source(self) -> str:
+++        return self._phi_source
+++
+++    def _ensure_loop(self) -> asyncio.AbstractEventLoop:
+++        if self._loop is None:
+++            try:
+++                self._loop = asyncio.get_running_loop()
+++            except RuntimeError:
+++                self._loop = asyncio.get_event_loop()
+++        return self._loop
+++
+++    async def enable(self) -> None:
+++        await self.start()
+++        self._hybrid_enabled = True
+++
+++    async def disable(self) -> None:
+++        self._hybrid_enabled = False
+++        await self.stop()
+++
+++    async def start(self) -> None:
+++        if self._active:
+++            return
+++
+++        self._ensure_loop()
+++        self._active = True
+++        if self._simulate:
+++            LOGGER.warning("sounddevice not available; running HybridNode in simulation mode")
+++            self._simulation_task = asyncio.create_task(self._run_simulation())
+++            return
+++
+++        def callback(indata, outdata, frames, time_info, status):  # pragma: no cover - realtime path
+++            if status:
+++                LOGGER.warning("Hybrid stream status: %s", status)
+++            start_time = time.monotonic()
+++            try:
+++                audio_block = indata.copy() if indata is not None else None
+++                if audio_block is None:
+++                    audio_block = np.zeros((frames, self.channels), dtype=np.float32)
+++                processed = audio_block * self._gain
+++                metrics = self._process_block(processed)
+++                block_latency = (time.monotonic() - start_time) * 1000.0
+++                metrics.latency_ms = max(metrics.latency_ms, block_latency, 0.0)
+++                self._dispatch_metrics(metrics)
+++                if outdata is not None:
+++                    outdata[:] = processed
+++            except Exception as err:  # pragma: no cover - realtime safety net
+++                LOGGER.exception("Hybrid callback error: %%s", err)
+++
+++        self._stream = sd.Stream(
+++            samplerate=self.sample_rate,
+++            blocksize=self.block_size,
+++            channels=self.channels,
+++            dtype="float32",
+++            callback=callback,
+++            latency="low",
+++        )
+++        self._stream.start()
+++
+++    async def stop(self) -> None:
+++        if not self._active:
+++            return
+++
+++        self._active = False
+++        if self._stream is not None:  # pragma: no cover - realtime path
+++            try:
+++                self._stream.stop()
+++            finally:
+++                self._stream.close()
+++                self._stream = None
+++        if self._simulation_task:
+++            self._simulation_task.cancel()
+++            try:
+++                await self._simulation_task
+++            except asyncio.CancelledError:
+++                pass
+++            self._simulation_task = None
+++
+++    async def register_client(self) -> asyncio.Queue[Dict[str, float]]:
+++        queue: asyncio.Queue[Dict[str, float]] = asyncio.Queue(maxsize=1)
+++        self._metrics_clients.add(queue)
+++        return queue
+++
+++    def unregister_client(self, queue: asyncio.Queue[Dict[str, float]]) -> None:
+++        self._metrics_clients.discard(queue)
+++
+++    def set_phi_value(self, value: float) -> None:
+++        self._phi_value = float(value)
+++
+++    def set_gain(self, gain: float) -> None:
+++        self._gain = max(0.0, float(gain))
+++
+++    def set_phi_source(self, source: str) -> None:
+++        self._phi_source = source
+++
+++    def status(self) -> Dict[str, Any]:
+++        return {
+++            "active": self._active,
+++            "enabled": self._hybrid_enabled,
+++            "phi": self._phi_value,
+++            "gain": self._gain,
+++            "phiSource": self._phi_source,
+++            "sampleRate": self.sample_rate,
+++            "channels": self.channels,
+++        }
+++
+++    def _process_block(self, block: Any) -> HybridMetrics:
+++        start = time.monotonic()
+++        metrics = self.processor.process_block(block, self._phi_value)
+++        process_duration = time.monotonic() - start
+++        cpu_window = self.block_size / float(self.sample_rate)
+++        instantaneous_load = min(max(process_duration / cpu_window, 0.0), 5.0)
+++        self._cpu_estimate = (
+++            self._cpu_alpha * instantaneous_load + (1.0 - self._cpu_alpha) * self._cpu_estimate
+++        )
+++        metrics.cpu_load = min(self._cpu_estimate, 1.0)
+++        metrics.latency_ms = max(metrics.latency_ms, process_duration * 1000.0, 0.0)
+++        return metrics
+++
+++    def _dispatch_metrics(self, metrics: HybridMetrics) -> None:
+++        loop = self._ensure_loop()
+++        payload = metrics.asdict()
+++
+++        def _fanout() -> None:
+++            stale: Set[asyncio.Queue[Dict[str, float]]] = set()
+++            for queue in list(self._metrics_clients):
+++                if queue.full():
+++                    try:
+++                        queue.get_nowait()
+++                    except asyncio.QueueEmpty:
+++                        pass
+++                try:
+++                    queue.put_nowait(payload)
+++                except asyncio.QueueFull:
+++                    stale.add(queue)
+++            for queue in stale:
+++                self._metrics_clients.discard(queue)
+++
+++        loop.call_soon_threadsafe(_fanout)
+++
+++    async def _run_simulation(self) -> None:
+++        assert np is not None, "numpy is required for simulation"
+++        block_duration = self.block_size / float(self.sample_rate)
+++        phase = 0.0
+++        while self._active:
+++            start = time.monotonic()
+++            # Generate an 8-channel synthetic waveform with gentle modulation.
+++            t = np.arange(self.block_size) / float(self.sample_rate)
+++            carrier = np.sin(2 * math.pi * 220 * t + phase)
+++            phase = (phase + 2 * math.pi * block_duration * 4) % (2 * math.pi)
+++            block = np.stack([carrier * (1 + 0.1 * i) for i in range(self.channels)], axis=1)
+++            block *= (self._phi_value + 1.0) * self._gain * 0.5
+++            metrics = self._process_block(block)
+++            metrics.latency_ms = max(metrics.latency_ms, (time.monotonic() - start) * 1000.0, 0.0)
+++            self._dispatch_metrics(metrics)
+++            sleep_for = max(block_duration - (time.monotonic() - start), 0.0)
+++            await asyncio.sleep(sleep_for)
+++
+++    async def handle_message(self, message: str) -> Dict[str, Any]:
+++        try:
+++            payload = json.loads(message)
+++        except json.JSONDecodeError as error:
+++            LOGGER.error("Invalid hybrid message: %s", error)
+++            return {"error": "invalid_json"}
+++
+++        action = payload.get("action")
+++        if action == "enable":
+++            await self.enable()
+++        elif action == "disable":
+++            await self.disable()
+++        elif action == "phi":
+++            self.set_phi_value(payload.get("value", 0.0))
+++        elif action == "gain":
+++            self.set_gain(payload.get("value", 1.0))
+++        elif action == "source":
+++            self.set_phi_source(payload.get("value", "internal"))
+++        else:
+++            LOGGER.warning("Unknown hybrid action: %s", action)
+++            return {"error": "unknown_action", "action": action}
+++
+++        return {"ok": True, "state": self.status()}
+++
+++
+++def _self_test() -> bool:
+++    """Quick behavioural smoke-test for the hybrid node."""
+++
+++    async def _run() -> bool:
+++        class DummyProcessor:
+++            def __init__(self) -> None:
+++                self.calls = 0
+++
+++            def process_block(self, block: Any, phi_value: float) -> HybridMetrics:
+++                self.calls += 1
+++                return HybridMetrics(
+++                    ici=0.42,
+++                    coherence=0.84,
+++                    centroid=0.25,
+++                    phi_value=phi_value,
+++                    latency_ms=0.5,
+++                    cpu_load=0.1,
+++                )
+++
+++        processor = DummyProcessor()
+++        node = HybridNode(sample_rate=48_000, channels=2, block_size=64, processor=processor)
+++
+++        async def fake_start() -> None:
+++            node._active = True
+++
+++        async def fake_stop() -> None:
+++            node._active = False
+++
+++        # Monkey patch start/stop to avoid requiring sounddevice/numpy during tests.
+++        node.start = fake_start  # type: ignore[assignment]
+++        node.stop = fake_stop  # type: ignore[assignment]
+++
+++        queue = await node.register_client()
+++        await node.enable()
+++        assert node.status()["enabled"] is True
+++        node.set_phi_source("external_ws")
+++        node.set_phi_value(0.73)
+++        node.set_gain(0.85)
+++
+++        metrics = node._process_block(object())
+++        node._dispatch_metrics(metrics)
+++        payload = await asyncio.wait_for(queue.get(), timeout=1.0)
+++        assert set(payload.keys()) >= {"ici", "coherence", "centroid", "latencyMs", "cpuLoad"}
+++
+++        state = await node.handle_message(json.dumps({"action": "phi", "value": 0.33}))
+++        assert state["state"]["phi"] == 0.33
+++        await node.handle_message(json.dumps({"action": "source", "value": "manual"}))
+++        await node.handle_message(json.dumps({"action": "gain", "value": 0.5}))
+++        await node.handle_message(json.dumps({"action": "disable"}))
+++        assert node.status()["enabled"] is False
+++
+++        node.unregister_client(queue)
+++        return True
+++
+++    return asyncio.run(_run())
+++
+++
+++if __name__ == "__main__":
+++    _self_test()
++diff --git a/static/js/soundlab-audio-engine.js b/static/js/soundlab-audio-engine.js
++new file mode 100644
++index 0000000..d16c8ab
++--- /dev/null
+++++ b/static/js/soundlab-audio-engine.js
++@@ -0,0 +1,545 @@
+++class HybridWebSocketClient {
+++  constructor(url, { onMetrics, onState, onError } = {}) {
+++    this.url = url;
+++    this.onMetrics = onMetrics;
+++    this.onState = onState;
+++    this.onError = onError;
+++    this.socket = null;
+++    this._connecting = null;
+++    this._pendingStateResolvers = [];
+++    this.lastState = null;
+++    this._isClosing = false;
+++  }
+++
+++  async connect() {
+++    if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+++      return this.lastState;
+++    }
+++    if (this._connecting) {
+++      return this._connecting;
+++    }
+++    if (!('WebSocket' in window)) {
+++      throw new Error('WebSocket is not supported in this browser.');
+++    }
+++
+++    this._connecting = new Promise((resolve, reject) => {
+++      const socket = new WebSocket(this.url);
+++      const cleanup = () => {
+++        socket.removeEventListener('open', handleOpen);
+++        socket.removeEventListener('message', handleMessage);
+++        socket.removeEventListener('error', handleError);
+++        socket.removeEventListener('close', handleClose);
+++      };
+++
+++      const handleOpen = () => {
+++        this.socket = socket;
+++        cleanup();
+++        this._wireSocketEvents(socket);
+++        resolve(this.lastState);
+++      };
+++
+++      const handleMessage = event => {
+++        try {
+++          const data = JSON.parse(event.data);
+++          if (data.type === 'state') {
+++            this.lastState = data.payload;
+++          }
+++        } catch (error) {
+++          console.error('Hybrid pre-open message parse error', error);
+++        }
+++      };
+++
+++      const handleError = error => {
+++        cleanup();
+++        this._connecting = null;
+++        reject(error instanceof Event ? new Error('Hybrid socket error during connect') : error);
+++      };
+++
+++      const handleClose = () => {
+++        cleanup();
+++        this._connecting = null;
+++        reject(new Error('Hybrid socket closed during handshake'));
+++      };
+++
+++      socket.addEventListener('open', handleOpen);
+++      socket.addEventListener('message', handleMessage);
+++      socket.addEventListener('error', handleError);
+++      socket.addEventListener('close', handleClose);
+++    });
+++
+++    try {
+++      return await this._connecting;
+++    } finally {
+++      this._connecting = null;
+++    }
+++  }
+++
+++  _wireSocketEvents(socket) {
+++    socket.addEventListener('message', event => {
+++      let payload;
+++      try {
+++        payload = JSON.parse(event.data);
+++      } catch (error) {
+++        console.error('Hybrid socket message parse error', error);
+++        return;
+++      }
+++
+++      if (payload.type === 'metrics' && typeof this.onMetrics === 'function') {
+++        this.onMetrics(payload.payload);
+++      }
+++
+++      if (payload.type === 'state') {
+++        this.lastState = payload.payload;
+++        if (typeof this.onState === 'function') {
+++          this.onState(payload.payload);
+++        }
+++        const resolver = this._pendingStateResolvers.shift();
+++        if (resolver) {
+++          clearTimeout(resolver.timeout);
+++          resolver.resolve(payload.payload);
+++        }
+++      }
+++
+++      if (payload.type === 'error') {
+++        const error = new Error(payload.payload?.message || 'Hybrid node reported an error');
+++        if (typeof this.onError === 'function') {
+++          this.onError(error);
+++        } else {
+++          console.error(error);
+++        }
+++      }
+++    });
+++
+++    socket.addEventListener('close', event => {
+++      this.socket = null;
+++      if (!this._isClosing) {
+++        const error = new Error('Hybrid socket closed unexpectedly');
+++        if (typeof this.onError === 'function') {
+++          this.onError(error);
+++        } else {
+++          console.warn(error.message);
+++        }
+++      }
+++      while (this._pendingStateResolvers.length) {
+++        const resolver = this._pendingStateResolvers.shift();
+++        if (resolver) {
+++          clearTimeout(resolver.timeout);
+++          resolver.reject(new Error('Hybrid socket closed before acknowledgement'));
+++        }
+++      }
+++    });
+++
+++    socket.addEventListener('error', event => {
+++      const error = new Error('Hybrid socket encountered an error');
+++      if (typeof this.onError === 'function') {
+++        this.onError(error);
+++      } else {
+++        console.error(error);
+++      }
+++    });
+++  }
+++
+++  _send(payload, expectAck = true) {
+++    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+++      return Promise.reject(new Error('Hybrid socket is not connected'));
+++    }
+++    const message = JSON.stringify(payload);
+++    if (!expectAck) {
+++      this.socket.send(message);
+++      return Promise.resolve(this.lastState);
+++    }
+++    return new Promise((resolve, reject) => {
+++      const entry = { timeout: null };
+++      entry.resolve = state => {
+++        if (entry.timeout) {
+++          clearTimeout(entry.timeout);
+++        }
+++        resolve(state);
+++      };
+++      entry.reject = error => {
+++        if (entry.timeout) {
+++          clearTimeout(entry.timeout);
+++        }
+++        reject(error);
+++      };
+++      entry.timeout = setTimeout(() => {
+++        const index = this._pendingStateResolvers.indexOf(entry);
+++        if (index >= 0) {
+++          this._pendingStateResolvers.splice(index, 1);
+++        }
+++        entry.reject(new Error('Hybrid node acknowledgement timed out'));
+++      }, 2000);
+++      this._pendingStateResolvers.push(entry);
+++      this.socket.send(message);
+++    });
+++  }
+++
+++  enable() {
+++    return this._send({ action: 'enable' });
+++  }
+++
+++  disable() {
+++    return this._send({ action: 'disable' });
+++  }
+++
+++  setPhiSource(source) {
+++    return this._send({ action: 'source', value: source });
+++  }
+++
+++  setPhiValue(value) {
+++    return this._send({ action: 'phi', value }, false);
+++  }
+++
+++  setGain(value) {
+++    return this._send({ action: 'gain', value });
+++  }
+++
+++  close() {
+++    if (this.socket) {
+++      this._isClosing = true;
+++      try {
+++        this.socket.close();
+++      } finally {
+++        this._isClosing = false;
+++        this.socket = null;
+++      }
+++    }
+++  }
+++}
+++
+++export class SoundlabAudioEngine {
+++  constructor() {
+++    this.audioContext = null;
+++    this.inputGain = null;
+++    this.filterLow = null;
+++    this.filterMid = null;
+++    this.filterHigh = null;
+++    this.saturationNode = null;
+++    this.saturationGain = null;
+++    this.dryGain = null;
+++    this.wetGain = null;
+++    this.outputGain = null;
+++    this.compressor = null;
+++    this.isPlaying = false;
+++    this.parameters = {
+++      mix: 0.0,
+++    };
+++    this.hybridMode = false;
+++    this.hybridClient = null;
+++    this.hybridMetricsListeners = new Set();
+++    this.hybridStateListeners = new Set();
+++    this.latestHybridMetrics = null;
+++  }
+++
+++  async ensureContext() {
+++    if (this.audioContext) {
+++      return;
+++    }
+++
+++    const ContextCtor = window.AudioContext || window.webkitAudioContext;
+++    if (!ContextCtor) {
+++      throw new Error('Web Audio API is not supported in this browser.');
+++    }
+++
+++    this.audioContext = new ContextCtor();
+++    await this.audioContext.resume();
+++
+++    this._initializeGraph();
+++  }
+++
+++  _initializeGraph() {
+++    this.inputGain = this.audioContext.createGain();
+++    this.inputGain.gain.value = 1.0;
+++
+++    this.filterLow = this.audioContext.createBiquadFilter();
+++    this.filterLow.type = 'lowshelf';
+++    this.filterLow.frequency.value = 120;
+++
+++    this.filterMid = this.audioContext.createBiquadFilter();
+++    this.filterMid.type = 'peaking';
+++    this.filterMid.frequency.value = 1000;
+++    this.filterMid.Q.value = 1.25;
+++
+++    this.filterHigh = this.audioContext.createBiquadFilter();
+++    this.filterHigh.type = 'highshelf';
+++    this.filterHigh.frequency.value = 6000;
+++
+++    this.saturationNode = this.audioContext.createWaveShaper();
+++    this.saturationGain = this.audioContext.createGain();
+++    this.saturationGain.gain.value = 1.0;
+++
+++    this.compressor = this.audioContext.createDynamicsCompressor();
+++    this.compressor.attack.value = 0.003;
+++    this.compressor.release.value = 0.25;
+++
+++    this.outputGain = this.audioContext.createGain();
+++    this.outputGain.gain.value = 0.9;
+++
+++    this.inputGain.connect(this.filterLow);
+++    this.filterLow.connect(this.filterMid);
+++    this.filterMid.connect(this.filterHigh);
+++
+++    this.dryGain = this.audioContext.createGain();
+++    this.wetGain = this.audioContext.createGain();
+++    this.dryGain.gain.value = 1.0;
+++    this.wetGain.gain.value = 0.0;
+++
+++    this.filterHigh.connect(this.dryGain);
+++    this.filterHigh.connect(this.saturationNode);
+++    this.saturationNode.connect(this.saturationGain);
+++    this.saturationGain.connect(this.wetGain);
+++
+++    const dryWetMerger = this.audioContext.createGain();
+++    this.dryGain.connect(dryWetMerger);
+++    this.wetGain.connect(dryWetMerger);
+++    dryWetMerger.connect(this.compressor);
+++
+++    this.compressor.connect(this.outputGain);
+++    this.outputGain.connect(this.audioContext.destination);
+++
+++    this.updateMix = value => {
+++      const now = this.audioContext.currentTime;
+++      const dry = 1.0 - value;
+++      const wet = value;
+++      this.dryGain.gain.setTargetAtTime(dry, now, 0.05);
+++      this.wetGain.gain.setTargetAtTime(wet, now, 0.05);
+++      this.parameters.mix = value;
+++    };
+++  }
+++
+++  connectSource(node) {
+++    if (!this.inputGain) {
+++      throw new Error('Audio graph has not been initialized. Call ensureContext() first.');
+++    }
+++    node.connect(this.inputGain);
+++  }
+++
+++  disconnectSource(node) {
+++    try {
+++      node.disconnect(this.inputGain);
+++    } catch (error) {
+++      console.warn('Attempted to disconnect an unknown source node.', error);
+++    }
+++  }
+++
+++  async startAudio() {
+++    await this.ensureContext();
+++
+++    window.soundlabTransport = window.soundlabTransport || {
+++      playing: false,
+++      phiMode: false,
+++      hybrid: false,
+++      lastStop: null,
+++    };
+++    window.soundlabTransport.playing = true;
+++    window.soundlabTransport.hybrid = this.hybridMode;
+++
+++    this.isPlaying = true;
+++
+++    this.schedulePhiModulation().then(() => {
+++      window.soundlabTransport.playing = false;
+++      window.soundlabTransport.phiMode = false;
+++      window.soundlabTransport.hybrid = false;
+++      this.isPlaying = false;
+++      const stopControl = document.querySelector('#stopButton') || document.querySelector('#stopBtn');
+++      if (stopControl) {
+++        stopControl.disabled = true;
+++      }
+++    });
+++    console.log('Audio started');
+++    const stopControl = document.querySelector('#stopButton') || document.querySelector('#stopBtn');
+++    if (stopControl) {
+++      stopControl.disabled = false;
+++    }
+++  }
+++
+++  async stopAudio() {
+++    if (!this.audioContext) {
+++      return;
+++    }
+++
+++    try {
+++      await this.audioContext.close();
+++    } finally {
+++      this.audioContext = null;
+++      this.inputGain = null;
+++      this.filterLow = null;
+++      this.filterMid = null;
+++      this.filterHigh = null;
+++      this.saturationNode = null;
+++      this.saturationGain = null;
+++      this.dryGain = null;
+++      this.wetGain = null;
+++      this.outputGain = null;
+++      this.compressor = null;
+++    }
+++
+++    if (this.hybridClient) {
+++      try {
+++        await this.hybridClient.disable();
+++      } catch (error) {
+++        console.warn('Failed to disable hybrid node during shutdown', error);
+++      }
+++      this.hybridClient.close();
+++    }
+++
+++    window.soundlabTransport = {
+++      playing: false,
+++      phiMode: false,
+++      hybrid: false,
+++      lastStop: performance.now(),
+++    };
+++    this.hybridMode = false;
+++    this.isPlaying = false;
+++    console.log('Audio stopped');
+++
+++    const stopControl = document.querySelector('#stopButton') || document.querySelector('#stopBtn');
+++    if (stopControl) {
+++      stopControl.disabled = true;
+++    }
+++  }
+++
+++  async schedulePhiModulation() {
+++    return Promise.resolve();
+++  }
+++
+++  _defaultHybridUrl() {
+++    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+++    return `${protocol}//${window.location.host}/ws/hybrid`;
+++  }
+++
+++  async _ensureHybridClient(options = {}) {
+++    const targetUrl = options.websocketUrl || (this.hybridClient && this.hybridClient.url) || this._defaultHybridUrl();
+++    if (this.hybridClient && this.hybridClient.url !== targetUrl) {
+++      this.hybridClient.close();
+++      this.hybridClient = null;
+++    }
+++
+++    if (!this.hybridClient) {
+++      this.hybridClient = new HybridWebSocketClient(targetUrl, {
+++        onMetrics: metrics => this._emitHybridMetrics(metrics),
+++        onState: state => this._emitHybridState(state),
+++        onError: error => console.error('Hybrid node error', error),
+++      });
+++    }
+++
+++    return this.hybridClient.connect();
+++  }
+++
+++  _emitHybridMetrics(metrics) {
+++    this.latestHybridMetrics = metrics;
+++    this.hybridMetricsListeners.forEach(listener => {
+++      try {
+++        listener(metrics);
+++      } catch (error) {
+++        console.error('Hybrid metrics listener error', error);
+++      }
+++    });
+++  }
+++
+++  _emitHybridState(state) {
+++    if (!state) {
+++      return;
+++    }
+++    window.soundlabTransport = window.soundlabTransport || {
+++      playing: false,
+++      phiMode: false,
+++      hybrid: false,
+++      lastStop: null,
+++    };
+++    if (Object.prototype.hasOwnProperty.call(state, 'enabled')) {
+++      window.soundlabTransport.hybrid = Boolean(state.enabled);
+++      this.hybridMode = Boolean(state.enabled);
+++    }
+++    this.hybridStateListeners.forEach(listener => {
+++      try {
+++        listener(state);
+++      } catch (error) {
+++        console.error('Hybrid state listener error', error);
+++      }
+++    });
+++  }
+++
+++  onHybridMetrics(listener) {
+++    if (typeof listener !== 'function') {
+++      return () => {};
+++    }
+++    this.hybridMetricsListeners.add(listener);
+++    if (this.latestHybridMetrics) {
+++      try {
+++        listener(this.latestHybridMetrics);
+++      } catch (error) {
+++        console.error('Hybrid metrics listener error', error);
+++      }
+++    }
+++    return () => {
+++      this.hybridMetricsListeners.delete(listener);
+++    };
+++  }
+++
+++  onHybridState(listener) {
+++    if (typeof listener !== 'function') {
+++      return () => {};
+++    }
+++    this.hybridStateListeners.add(listener);
+++    return () => {
+++      this.hybridStateListeners.delete(listener);
+++    };
+++  }
+++
+++  async setHybridMode(enabled, options = {}) {
+++    if (enabled) {
+++      await this.ensureContext();
+++      await this._ensureHybridClient(options);
+++      const state = await this.hybridClient.enable();
+++      if (options.phiSource) {
+++        await this.hybridClient.setPhiSource(options.phiSource);
+++      }
+++      this.hybridMode = true;
+++      window.soundlabTransport.hybrid = true;
+++      return state;
+++    }
+++
+++    if (this.hybridClient) {
+++      try {
+++        await this.hybridClient.disable();
+++      } catch (error) {
+++        console.warn('Hybrid disable request failed', error);
+++      }
+++    }
+++    window.soundlabTransport = window.soundlabTransport || {
+++      playing: false,
+++      phiMode: false,
+++      hybrid: false,
+++      lastStop: null,
+++    };
+++    window.soundlabTransport.hybrid = false;
+++    this.hybridMode = false;
+++    return this.hybridClient ? this.hybridClient.lastState : null;
+++  }
+++
+++  async setHybridPhiSource(source) {
+++    if (!this.hybridClient) {
+++      await this._ensureHybridClient();
+++    }
+++    return this.hybridClient.setPhiSource(source);
+++  }
+++
+++  async setHybridPhiValue(value) {
+++    if (!this.hybridClient) {
+++      await this._ensureHybridClient();
+++    }
+++    return this.hybridClient.setPhiValue(value);
+++  }
+++
+++  async setHybridGain(value) {
+++    if (!this.hybridClient) {
+++      await this._ensureHybridClient();
+++    }
+++    return this.hybridClient.setGain(value);
+++  }
+++}
+++
+++const engineInstance = new SoundlabAudioEngine();
+++window.soundlabAudioEngine = engineInstance;
+++export default engineInstance;
+diff --git a/docs/soundlab-diagnostic-report.md b/docs/soundlab-diagnostic-report.md
+index b9e9208433e9a937c9c2ef55feddb5d4b1754b42..156014c3a1d99ea0bf040068fff071b14775ab4a 100644
+--- a/docs/soundlab-diagnostic-report.md
 +++ b/docs/soundlab-diagnostic-report.md
-@@ -0,0 +1,97 @@
+@@ -1,97 +1,97 @@
+-# Soundlab Modular Diagnostics
+-
+-## 1. UI Element Audit
+-### Interactive inventory
+-| Element | Location | Bound handler | Notes |
+-| --- | --- | --- | --- |
+-| `#startBtn` | Transport controls partial | `initAudio()` click listener enables graph bootstrap and status messaging.ã€F:partials/transport-controls.htmlâ€ L3-L60ã€‘ã€F:js/soundlab-events.jsâ€ L69-L75ã€‘ | Correctly disables itself after initialization and enables downstream actions.ã€F:js/soundlab-audio-core.jsâ€ L248-L259ã€‘ |
+-| `#generateBtn` | Transport controls partial | `generateTone()` click listener starts sine source and enables stop control.ã€F:partials/transport-controls.htmlâ€ L11-L27ã€‘ã€F:js/soundlab-events.jsâ€ L69-L75ã€‘ã€F:js/soundlab-audio-core.jsâ€ L262-L289ã€‘ | Disabled until audio engine starts, preventing orphan presses.ã€F:js/soundlab-audio-core.jsâ€ L248-L257ã€‘ |
+-| `#stopBtn` | Transport controls partial | Composite click handler stops tone/file/Î¦/image playback.ã€F:partials/transport-controls.htmlâ€ L28-L47ã€‘ã€F:js/soundlab-events.jsâ€ L71-L75ã€‘ | Re-disabled after `stopAudio()`, but not after Î¦ auto-complete (see Â§3).ã€F:js/soundlab-audio-core.jsâ€ L338-L358ã€‘ã€F:js/soundlab-phi.jsâ€ L258-L285ã€‘ |
+-| `#loadBtn` / `#fileInput` | Transport controls partial | Button triggers hidden file input; `change` wired to `loadAudioFile()` with audio-context guard.ã€F:partials/transport-controls.htmlâ€ L48-L69ã€‘ã€F:js/soundlab-events.jsâ€ L76-L80ã€‘ã€F:js/soundlab-audio-core.jsâ€ L291-L336ã€‘ | Status messaging steers users back to Start Audio if context missing.ã€F:js/soundlab-audio-core.jsâ€ L295-L305ã€‘ |
+-| `#loadImageBtn` / `#imageInput` | Transport controls partial | Loads image into canvas, reveals panel, primes status.ã€F:partials/transport-controls.htmlâ€ L70-L99ã€‘ã€F:js/soundlab-events.jsâ€ L80-L84ã€‘ã€F:js/soundlab-image.jsâ€ L9-L62ã€‘ | Leaves Play button enabled even when audio context absent; playback simply no-ops (see Â§4). |
+-| `#playImageBtn` | Transport controls partial | Toggles between `startImagePlayback()` and `stopImagePlayback()` with status copy.ã€F:partials/transport-controls.htmlâ€ L88-L99ã€‘ã€F:js/soundlab-events.jsâ€ L83-L84ã€‘ã€F:js/soundlab-image.jsâ€ L64-L115ã€‘ | Button label swaps on toggle; disabled until image present.ã€F:js/soundlab-image.jsâ€ L46-L55ã€‘ |
+-| Î¦ controls (`#phiMode`, `#baseFreq`, `#duration`, `#driveCurve`, `#frequencyRange`, `#runPhiBtn`, `#restoreParamsBtn`, `#diagnosticBtn`) | Î¦ panel partial | Mode runner reads values via `getParams()`; restore & diagnostic buttons wired to recovery/log routines.ã€F:partials/transport-controls.htmlâ€ L101-L176ã€‘ã€F:js/soundlab-events.jsâ€ L84-L90ã€‘ã€F:js/soundlab-phi.jsâ€ L71-L337ã€‘ã€F:js/soundlab-utils.jsâ€ L39-L59ã€‘ | `#restoreParamsBtn` remains disabled until a Î¦ run captures state.ã€F:js/soundlab-phi.jsâ€ L266-L275ã€‘ |
+-| EQ & saturation knobs (`.knob`) | EQ/saturation partials | Mouse, keyboard, and focus handlers sync UI, logs, and audio params with readiness checks.ã€F:partials/eq-panel.htmlâ€ L4-L16ã€‘ã€F:partials/saturation-panel.htmlâ€ L4-L16ã€‘ã€F:js/soundlab-events.jsâ€ L110-L238ã€‘ | Prevents edits before engine start via `isEqReady()` messaging.ã€F:js/soundlab-audio-core.jsâ€ L205-L214ã€‘ |
+-| Image sonification controls (`#sonifyMode`, `#scanSpeed`, `#freqMin`, `#freqMax`) | Image panel partial | Slider updates live label; values consumed during playback per mode.ã€F:partials/image-sonification.htmlâ€ L1-L36ã€‘ã€F:js/soundlab-events.jsâ€ L97-L101ã€‘ã€F:js/soundlab-image.jsâ€ L117-L330ã€‘ | Panel stays hidden until image loads, preserving layout integrity.ã€F:js/soundlab-image.jsâ€ L42-L55ã€‘ |
+-| Logging controls (`#clearLogBtn`, `#exportLogBtn`, `#exportJsonBtn`) | Log partial | Click handlers reset log or export CSV/JSON via Blob download.ã€F:partials/log-and-matrix.htmlâ€ L3-L33ã€‘ã€F:js/soundlab-events.jsâ€ L103-L105ã€‘ã€F:js/soundlab-logging.jsâ€ L18-L144ã€‘ | Shortcut legend auto-populates from `data-shortcut` attributes.ã€F:js/soundlab-logging.jsâ€ L146-L164ã€‘ |
+-| Config dropdown `#configSelect` | Config loader partial | `change` handler fetches JSON, normalizes, and applies to UI/matrix.ã€F:partials/config-loader.htmlâ€ L1-L8ã€‘ã€F:js/soundlab-events.jsâ€ L92-L95ã€‘ã€F:js/soundlab-config.jsâ€ L4-L142ã€‘ |
+-| Status displays (`#status`, `#statusTip`, `#shortcutLegend`, log counters) | Transport & log partials | Updated across modules to reflect lifecycle state.ã€F:partials/transport-controls.htmlâ€ L101-L176ã€‘ã€F:partials/log-and-matrix.htmlâ€ L3-L33ã€‘ã€F:js/soundlab-audio-core.jsâ€ L248-L359ã€‘ã€F:js/soundlab-logging.jsâ€ L48-L164ã€‘ | Provide user feedback for readiness, diagnostics, and logging. |
+-
+-### Findings
+-* All declared interactive elements are wired to handlers after partial loading; no orphaned IDs detected because `loadPartials()` awaits each include before binding events.ã€F:js/soundlab-main.jsâ€ L335-L364ã€‘ã€F:js/soundlab-events.jsâ€ L66-L107ã€‘
+-* Shortcut legend covers every control exposing a `data-shortcut`, ensuring accessibility parity between mouse and keyboard workflows.ã€F:js/soundlab-logging.jsâ€ L146-L164ã€‘
+-* Event registration assumes partial markup availability; if a new include fails without a fallback snippet, `document.getElementById(...).addEventListener` would throw. Consider null-guards or `querySelector` option chaining for future extensibility.ã€F:js/soundlab-events.jsâ€ L69-L107ã€‘ã€F:js/soundlab-main.jsâ€ L335-L349ã€‘
+-
+-## 2. Audio Graph Validation
+-### Observations
+-* `initAudio()` constructs a linear chain (source â†’ EQ filters â†’ waveshaper â†’ gain â†’ analyser â†’ destination), seeds analyser buffers, and primes UI state.ã€F:js/soundlab-audio-core.jsâ€ L216-L260ã€‘
+-* `generateTone()`/`loadAudioFile()` rebuild upstream sources while reusing the shared processing chain via `ensureProcessingChain()`.ã€F:js/soundlab-audio-core.jsâ€ L262-L333ã€‘
+-* `stopAudio()` tears down active oscillator/buffer sources and restores transport controls, but leaves the processing chain hot for subsequent playback.ã€F:js/soundlab-audio-core.jsâ€ L338-L359ã€‘
+-
+-### Issues & recommendations
+-| Severity | Issue | Evidence | Recommendation |
+-| --- | --- | --- | --- |
+-| **High** | Saturation mix removes the dry signal entirely: the waveshaper curve is scaled by `params.mix/100`, so the default mix of `0` silences all audio traversing the chain.ã€F:js/soundlab-audio-core.jsâ€ L19-L106ã€‘ | Implement a parallel dry path or compute a crossfaded output (e.g., mix = 0 routes dry signal, mix = 100 fully wet). At minimum, default mix should be 100% until blending is supported. |
+-| Medium | `ensureProcessingChain()` repeatedly disconnects nodes on each call; while safe, it risks transient pops under load and omits context resume for suspended states.ã€F:js/soundlab-audio-core.jsâ€ L56-L92ã€‘ | Cache a flag to skip redundant disconnect/reconnect cycles and call `audioContext.resume()` inside `initAudio()` for Safari/Chrome autoplay policies. |
+-| Medium | `stopAudio()` does not call `setAudioPlaying(false)`, while Î¦ mode uses that flag. Divergent state tracking can desynchronize shared status helpers.ã€F:js/soundlab-audio-core.jsâ€ L338-L359ã€‘ã€F:js/soundlab-phi.jsâ€ L258-L285ã€‘ | Normalize on the exported setter when toggling playback so UI components share the same state source. |
+-
+-## 3. Î¦ Mode Dispatch and Recovery
+-### Observations
+-* `runPhiMode()` validates the audio graph, stops prior Î¦ synthesis, then branches across tone/AM/FM/interval/harmonic implementations that share envelope helpers and parameter sampling from `getParams()`.ã€F:js/soundlab-phi.jsâ€ L71-L256ã€‘ã€F:js/soundlab-utils.jsâ€ L39-L59ã€‘
+-* On completion, last-run parameters are cached and the restore button is enabled; `restoreLastParams()` hydrates form inputs and announces status.ã€F:js/soundlab-phi.jsâ€ L258-L313ã€‘
+-* `diagnosticParamsLog()` prints structured details to the console and echoes a concise summary in the status banner.ã€F:js/soundlab-phi.jsâ€ L316-L333ã€‘
+-
+-### Issues & recommendations
+-| Severity | Issue | Evidence | Recommendation |
+-| --- | --- | --- | --- |
+-| Medium | When a Î¦ run times out naturally, the stop button remains enabled even though synthesis is halted, inviting redundant presses.ã€F:js/soundlab-phi.jsâ€ L258-L285ã€‘ | Disable `#stopBtn` inside the timeout callback (and re-enable Generate) to keep transport UI truthful without relying on manual stop. |
+-| Medium | Parameter recovery is session-bound only; reloading the page clears `lastParams`, reducing Î¦ workflow continuity.ã€F:js/soundlab-phi.jsâ€ L10-L44ã€‘ã€F:js/soundlab-phi.jsâ€ L266-L275ã€‘ | Persist the last Î¦ payload into `localStorage` (with timestamp) and hydrate during initialization to survive reloads. |
+-| Low | `diagnosticParamsLog()` relies on the console for detail, offering no in-app history beyond transient status text.ã€F:js/soundlab-phi.jsâ€ L316-L333ã€‘ | Pipe diagnostic output into the existing logging panel or a dedicated diagnostics feed for traceability. |
+-
+-## 4. Image Sonification Workflow
+-### Observations
+-* Image loading scales artwork to â‰¤512 px, reveals the sonification panel, and populates metadata before asserting audio readiness.ã€F:js/soundlab-image.jsâ€ L9-L58ã€‘
+-* Playback toggles update button text and status messaging while dispatching to spectral, harmonic, FM, or additive renderers that interpret pixel data differently.ã€F:js/soundlab-image.jsâ€ L64-L330ã€‘
+-* Each renderer advances a column counter, calls `drawScanIndicator()`, and halts automatically at image bounds.ã€F:js/soundlab-image.jsâ€ L152-L343ã€‘
+-
+-### Issues & recommendations
+-| Severity | Issue | Evidence | Recommendation |
+-| --- | --- | --- | --- |
+-| Medium | Loading an image before the audio engine is started leaves `#playImageBtn` enabled, yet subsequent playback simply returns without user feedback when `audioContext` is null.ã€F:js/soundlab-image.jsâ€ L46-L75ã€‘ | Either defer enabling Play until `getAudioContext()` succeeds or display a status prompt when `startImagePlayback()` aborts due to a missing context. |
+-| Medium | FM mode allocates a persistent `GainNode` (`modGain`) that is never stored in `imageOscillators`, so `stopImagePlayback()` cannot disconnect it explicitly.ã€F:js/soundlab-image.jsâ€ L222-L277ã€‘ | Track auxiliary nodes alongside oscillators or add a dedicated cleanup routine to prevent stray graph attachments during repeated toggles. |
+-| Medium | Harmonic and additive modes spawn numerous short-lived oscillators without tracking references, so stopping playback midway cannot immediately halt grains in flight.ã€F:js/soundlab-image.jsâ€ L187-L330ã€‘ | Maintain a pool of active grains (oscillators & gains) to allow forced teardown when the user presses Stop. |
+-| Low | `freqMin`/`freqMax` inputs accept any numeric values without validation, which can lead to silent or aliasing-prone spectra.ã€F:js/soundlab-image.jsâ€ L122-L330ã€‘ | Clamp ranges inside playback routines and surface validation errors near the form fields. |
+-
+-## 5. Logging and Export Hooks
+-### Observations
+-* Parameter deltas, derived â€œforce/work,â€ and running totals populate both the DOM log and downloadable CSV/JSON exports.ã€F:js/soundlab-logging.jsâ€ L18-L144ã€‘
+-* Clearing the log resets counters and redraws the placeholder; shortcut legend generation keeps keyboard hints in sync with UI changes.ã€F:js/soundlab-logging.jsâ€ L92-L164ã€‘
+-
+-### Issues & recommendations
+-| Severity | Issue | Evidence | Recommendation |
+-| --- | --- | --- | --- |
+-| Medium | Only knob interactions trigger logging; Î¦ mode actions, image scans, and transport events leave no audit trail.ã€F:js/soundlab-events.jsâ€ L110-L287ã€‘ã€F:js/soundlab-phi.jsâ€ L71-L333ã€‘ã€F:js/soundlab-image.jsâ€ L64-L330ã€‘ | Extend `logParameterChange()` usage (or introduce event-level logging) for Î¦ dispatch, image playback toggles, and transport state changes to achieve complete workflow coverage. |
+-| Low | CSV/JSON exports assume synchronous Blob support and do not report success/failure in the UI.ã€F:js/soundlab-logging.jsâ€ L99-L144ã€‘ | Update status text on export completion (or failure) so users receive inline confirmation without relying on browser download UI. |
+-
+-## 6. Modularization Integrity Check
+-### Observations
+-* `loadPartials()` fetches each include sequentially, falling back to baked-in HTML snippets when a request fails, guaranteeing required IDs exist before handler registration.ã€F:js/soundlab-main.jsâ€ L5-L369ã€‘
+-* Initialization orderâ€”partials, matrix seed, logging, then eventsâ€”keeps dependencies satisfied (matrix grid exists before `updateMatrix()`, log elements exist before `initLogging()`, etc.).ã€F:js/soundlab-main.jsâ€ L352-L364ã€‘
+-* Audio state is centralized in `soundlab-audio-core.js`, and shared getters ensure other modules read from the same context instance.ã€F:js/soundlab-audio-core.jsâ€ L32-L55ã€‘
+-
+-### Issues & recommendations
+-| Severity | Issue | Evidence | Recommendation |
+-| --- | --- | --- | --- |
+-| Medium | Sequential partial loading can delay first paint and input readiness if any include stalls.ã€F:js/soundlab-main.jsâ€ L352-L356ã€‘ | Load partials in parallel (`Promise.all`) while preserving post-load initialization sequencing to reduce perceived startup latency. |
+-| Low | Event binding assumes fallback HTML parity; if a future partial omits an ID, initialization will throw and halt setup.ã€F:js/soundlab-events.jsâ€ L69-L107ã€‘ | Wrap each `getElementById` call with optional chaining or guard clauses to improve resilience during iterative modular refactors. |
+-
+-## 7. Summary Report
+-| Area | Issues Found | Severity | Impact | Suggested Fixes | Missing Tests | Confidence |
+-| --- | --- | --- | --- | --- | --- | --- |
+-| Audio core | Dry/wet mix bug; redundant reconnects; inconsistent playback state flag | High / Medium | Silence by default, potential pops, state drift | Introduce proper mix bus; memoize connections; standardize `setAudioPlaying` usage | No automated Web Audio regression suite | Medium |
+-| Î¦ mode | Stop button state drift; session-only recovery; diagnostic visibility | Medium / Low | Confusing transport UI; lost presets across reloads; limited traceability | Disable stop post-timeout; persist last params; surface diagnostics in UI | No preset dispatch tests | Medium |
+-| Image sonification | Audio-context gating; FM cleanup gap; granular teardown; input validation | Medium / Low | User confusion, lingering nodes, noisy stoppage, invalid spectra | Gate Play button via context; track auxiliary nodes; maintain grain pool; clamp frequency inputs | No mode-by-mode playback tests | Low |
+-| Logging | Coverage gaps; export feedback | Medium / Low | Incomplete audit trail; unclear export results | Log Î¦/image/transport actions; update status after exports | No log export unit tests | Medium |
+-| Modularization | Sequential include loading; rigid binding assumptions | Medium / Low | Slower initial render; brittle future changes | Parallelize fetches; add binding guards | No integration smoke tests | Medium |
+-
+-**Overall:** The system is structurally sound, but the high-severity saturation mix defect and several medium-level lifecycle gaps merit prioritization. Confidence is medium because review relied on static analysis; targeted runtime tests (especially across browsers for Web Audio) are still required.
 +# Soundlab Modular Diagnostics
 +
 +## 1. UI Element Audit
@@ -238,6 +3760,7 @@ index 0000000000000000000000000000000000000000..d36bc6a3ffa1e7dbd943c3d4258e3826
 +| Modularization | Sequential include loading; rigid binding assumptions | Medium / Low | Slower initial render; brittle future changes | Parallelize fetches; add binding guards | No integration smoke tests | Medium |
 +
 +**Overall:** The system is structurally sound, but the high-severity saturation mix defect and several medium-level lifecycle gaps merit prioritization. Confidence is medium because review relied on static analysis; targeted runtime tests (especially across browsers for Web Audio) are still required.
+\ No newline at end of file
 diff --git a/docs/summary.md b/docs/summary.md
 new file mode 100644
 index 0000000000000000000000000000000000000000..1d52a5436b1879865dfdcbb3d9664be25b20b1aa
@@ -644,22 +4167,27 @@ index 0000000000000000000000000000000000000000..a069b0af2b0e693528446800b546a3ad
 +sounddevice>=0.4.6
 +numpy>=1.24.0
 diff --git a/server/__init__.py b/server/__init__.py
-new file mode 100644
-index 0000000000000000000000000000000000000000..31d8cfa9e0ea605ecac9e1026f8c7669d0b66c6b
---- /dev/null
+index 2daac14389b71f1c8f6a45c0e8e88aaf4ccf6d3c..31d8cfa9e0ea605ecac9e1026f8c7669d0b66c6b 100644
+--- a/server/__init__.py
 +++ b/server/__init__.py
-@@ -0,0 +1,5 @@
+@@ -1,7 +1,5 @@
+-"""
+-Soundlab Audio Engine Integration Server
+-Routes audio through D-ASE ChromaticFieldProcessor for real-time Φ-modulated processing
+-"""
 +"""Hybrid node server package for Chromatic Cognition."""
-+
+ 
+-__version__ = "1.0.0"
+-__author__ = "Soundlab Team"
 +from .hybrid_node import HybridNode
 +
 +__all__ = ["HybridNode"]
 diff --git a/server/app.py b/server/app.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..11ded33e92f0c6e8379b80cb7f877356fc803fa5
+index 0000000000000000000000000000000000000000..76618d02eb509d14a54f8da8604289c99e28f129
 --- /dev/null
 +++ b/server/app.py
-@@ -0,0 +1,83 @@
+@@ -0,0 +1,99 @@
 +"""FastAPI application exposing the hybrid node WebSocket bridge."""
 +
 +from __future__ import annotations
@@ -743,12 +4271,28 @@ index 0000000000000000000000000000000000000000..11ded33e92f0c6e8379b80cb7f877356
 +        with contextlib.suppress(asyncio.CancelledError):
 +            await receiver_task
 +        await hybrid_node.stop()
++
++
++def _self_test() -> bool:
++    """Exercise the websocket endpoint handshake."""
++
++    from fastapi.testclient import TestClient
++
++    client = TestClient(app)
++    with client.websocket_connect("/ws/hybrid") as websocket:
++        initial = websocket.receive_json()
++        assert initial["type"] == "state"
++    return True
++
++
++if __name__ == "__main__":
++    _self_test()
 diff --git a/server/hybrid_node.py b/server/hybrid_node.py
 new file mode 100644
-index 0000000000000000000000000000000000000000..6febd004ba7f1b0dcd471a1c4b2852f5abd93609
+index 0000000000000000000000000000000000000000..f22faf6fc499c665a7fe72a34170cb84282365a3
 --- /dev/null
 +++ b/server/hybrid_node.py
-@@ -0,0 +1,313 @@
+@@ -0,0 +1,374 @@
 +"""Hybrid audio node bridging analog input to the Chromatic Field processor."""
 +
 +from __future__ import annotations
@@ -1062,12 +4606,256 @@ index 0000000000000000000000000000000000000000..6febd004ba7f1b0dcd471a1c4b2852f5
 +            return {"error": "unknown_action", "action": action}
 +
 +        return {"ok": True, "state": self.status()}
++
++
++def _self_test() -> bool:
++    """Quick behavioural smoke-test for the hybrid node."""
++
++    async def _run() -> bool:
++        class DummyProcessor:
++            def __init__(self) -> None:
++                self.calls = 0
++
++            def process_block(self, block: Any, phi_value: float) -> HybridMetrics:
++                self.calls += 1
++                return HybridMetrics(
++                    ici=0.42,
++                    coherence=0.84,
++                    centroid=0.25,
++                    phi_value=phi_value,
++                    latency_ms=0.5,
++                    cpu_load=0.1,
++                )
++
++        processor = DummyProcessor()
++        node = HybridNode(sample_rate=48_000, channels=2, block_size=64, processor=processor)
++
++        async def fake_start() -> None:
++            node._active = True
++
++        async def fake_stop() -> None:
++            node._active = False
++
++        # Monkey patch start/stop to avoid requiring sounddevice/numpy during tests.
++        node.start = fake_start  # type: ignore[assignment]
++        node.stop = fake_stop  # type: ignore[assignment]
++
++        queue = await node.register_client()
++        await node.enable()
++        assert node.status()["enabled"] is True
++        node.set_phi_source("external_ws")
++        node.set_phi_value(0.73)
++        node.set_gain(0.85)
++
++        metrics = node._process_block(object())
++        node._dispatch_metrics(metrics)
++        payload = await asyncio.wait_for(queue.get(), timeout=1.0)
++        assert set(payload.keys()) >= {"ici", "coherence", "centroid", "latencyMs", "cpuLoad"}
++
++        state = await node.handle_message(json.dumps({"action": "phi", "value": 0.33}))
++        assert state["state"]["phi"] == 0.33
++        await node.handle_message(json.dumps({"action": "source", "value": "manual"}))
++        await node.handle_message(json.dumps({"action": "gain", "value": 0.5}))
++        await node.handle_message(json.dumps({"action": "disable"}))
++        assert node.status()["enabled"] is False
++
++        node.unregister_client(queue)
++        return True
++
++    return asyncio.run(_run())
++
++
++if __name__ == "__main__":
++    _self_test()
 diff --git a/static/js/soundlab-audio-engine.js b/static/js/soundlab-audio-engine.js
-new file mode 100644
-index 0000000000000000000000000000000000000000..d16c8ab525d27365af1f5a2accc3720e99372f9b
---- /dev/null
+index e065ae61c452fcdf7d0df26fe875601f819f302b..d16c8ab525d27365af1f5a2accc3720e99372f9b 100644
+--- a/static/js/soundlab-audio-engine.js
 +++ b/static/js/soundlab-audio-engine.js
-@@ -0,0 +1,545 @@
+@@ -1,184 +1,545 @@
+-export class SoundlabAudioEngine {
+-  constructor() {
+-    this.audioContext = null;
+-    this.inputGain = null;
+-    this.filterLow = null;
+-    this.filterMid = null;
+-    this.filterHigh = null;
+-    this.saturationNode = null;
+-    this.saturationGain = null;
+-    this.dryGain = null;
+-    this.wetGain = null;
+-    this.outputGain = null;
+-    this.compressor = null;
+-    this.isPlaying = false;
+-    this.parameters = {
+-      mix: 0.0
+-    };
+-  }
+-
+-  async ensureContext() {
+-    if (this.audioContext) {
+-      return;
+-    }
+-
+-    const ContextCtor = window.AudioContext || window.webkitAudioContext;
+-    if (!ContextCtor) {
+-      throw new Error('Web Audio API is not supported in this browser.');
+-    }
+-
+-    this.audioContext = new ContextCtor();
+-    await this.audioContext.resume();
+-
+-    this._initializeGraph();
+-  }
+-
+-  _initializeGraph() {
+-    this.inputGain = this.audioContext.createGain();
+-    this.inputGain.gain.value = 1.0;
+-
+-    this.filterLow = this.audioContext.createBiquadFilter();
+-    this.filterLow.type = 'lowshelf';
+-    this.filterLow.frequency.value = 120;
+-
+-    this.filterMid = this.audioContext.createBiquadFilter();
+-    this.filterMid.type = 'peaking';
+-    this.filterMid.frequency.value = 1000;
+-    this.filterMid.Q.value = 1.25;
+-
+-    this.filterHigh = this.audioContext.createBiquadFilter();
+-    this.filterHigh.type = 'highshelf';
+-    this.filterHigh.frequency.value = 6000;
+-
+-    this.saturationNode = this.audioContext.createWaveShaper();
+-    this.saturationGain = this.audioContext.createGain();
+-    this.saturationGain.gain.value = 1.0;
+-
+-    this.compressor = this.audioContext.createDynamicsCompressor();
+-    this.compressor.attack.value = 0.003;
+-    this.compressor.release.value = 0.25;
+-
+-    this.outputGain = this.audioContext.createGain();
+-    this.outputGain.gain.value = 0.9;
+-
+-    this.inputGain.connect(this.filterLow);
+-    this.filterLow.connect(this.filterMid);
+-    this.filterMid.connect(this.filterHigh);
+-
+-    // Fix 1: true dry/wet crossfade bus
+-    this.dryGain = this.audioContext.createGain();
+-    this.wetGain = this.audioContext.createGain();
+-    this.dryGain.gain.value = 1.0;
+-    this.wetGain.gain.value = 0.0;
+-
+-    this.filterHigh.connect(this.dryGain);
+-    this.filterHigh.connect(this.saturationNode);
+-    this.saturationNode.connect(this.saturationGain);
+-    this.saturationGain.connect(this.wetGain);
+-
+-    const dryWetMerger = this.audioContext.createGain();
+-    this.dryGain.connect(dryWetMerger);
+-    this.wetGain.connect(dryWetMerger);
+-    dryWetMerger.connect(this.compressor);
+-
+-    this.compressor.connect(this.outputGain);
+-    this.outputGain.connect(this.audioContext.destination);
+-
+-    this.updateMix = value => {
+-      const now = this.audioContext.currentTime;
+-      const dry = 1.0 - value;
+-      const wet = value;
+-      this.dryGain.gain.setTargetAtTime(dry, now, 0.05);
+-      this.wetGain.gain.setTargetAtTime(wet, now, 0.05);
+-      this.parameters.mix = value;
+-    };
+-  }
+-
+-  connectSource(node) {
+-    if (!this.inputGain) {
+-      throw new Error('Audio graph has not been initialized. Call ensureContext() first.');
+-    }
+-    node.connect(this.inputGain);
+-  }
+-
+-  disconnectSource(node) {
+-    try {
+-      node.disconnect(this.inputGain);
+-    } catch (error) {
+-      console.warn('Attempted to disconnect an unknown source node.', error);
+-    }
+-  }
+-
+-  async startAudio() {
+-    await this.ensureContext();
+-
+-    window.soundlabTransport = window.soundlabTransport || {
+-      playing: false,
+-      phiMode: false,
+-      lastStop: null
+-    };
+-    window.soundlabTransport.playing = true;
+-
+-    this.isPlaying = true;
+-
+-    this.schedulePhiModulation().then(() => {
+-      window.soundlabTransport.playing = false;
+-      window.soundlabTransport.phiMode = false;
+-      this.isPlaying = false;
+-      const stopControl =
+-        document.querySelector('#stopButton') || document.querySelector('#stopBtn');
+-      if (stopControl) {
+-        stopControl.disabled = true;
+-      }
+-    });
+-    console.log('Audio started');
+-    const stopControl = document.querySelector('#stopButton') || document.querySelector('#stopBtn');
+-    if (stopControl) {
+-      stopControl.disabled = false;
+-    }
+-  }
+-
+-  async stopAudio() {
+-    if (!this.audioContext) {
+-      return;
+-    }
+-
+-    try {
+-      await this.audioContext.close();
+-    } finally {
+-      this.audioContext = null;
+-      this.inputGain = null;
+-      this.filterLow = null;
+-      this.filterMid = null;
+-      this.filterHigh = null;
+-      this.saturationNode = null;
+-      this.saturationGain = null;
+-      this.dryGain = null;
+-      this.wetGain = null;
+-      this.outputGain = null;
+-      this.compressor = null;
+-    }
+-
+-    window.soundlabTransport = {
+-      playing: false,
+-      phiMode: false,
+-      lastStop: performance.now()
+-    };
+-    this.isPlaying = false;
+-    console.log('Audio stopped');
+-
+-    const stopControl = document.querySelector('#stopButton') || document.querySelector('#stopBtn');
+-    if (stopControl) {
+-      stopControl.disabled = true;
+-    }
+-  }
+-
+-  async schedulePhiModulation() {
+-    // Placeholder implementation. Real modulation sequencing should be provided
+-    // by higher-level Î¦ mode modules. Returning a resolved promise keeps the
+-    // lifecycle contract intact without blocking.
+-    return Promise.resolve();
+-  }
+-}
+-
+-export default new SoundlabAudioEngine(); 
 +class HybridWebSocketClient {
 +  constructor(url, { onMetrics, onState, onError } = {}) {
 +    this.url = url;
