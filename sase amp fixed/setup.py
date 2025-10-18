@@ -61,11 +61,12 @@ if is_windows:
         '/arch:AVX2',   # Enable AVX2 instructions
         '/fp:fast',     # Fast floating point
         '/DNOMINMAX',   # Disable min/max macros
+        '/openmp',      # Enable OpenMP parallelization
     ]
     extra_link_args = []
     libraries = ['libfftw3-3']
 
-    print("Building for Windows (MSVC) with AVX2 optimization")
+    print("Building for Windows (MSVC) with AVX2 + OpenMP optimization")
 
 elif is_linux:
     # GCC/Clang compiler flags for Linux
@@ -182,7 +183,7 @@ if __name__ == '__main__':
     print(f"Extension: dase_engine")
     print(f"Sources: {', '.join(sources)}")
     print(f"Platform: {sys.platform}")
-    print(f"Optimization: AVX2 + SSE4.2")
+    print(f"Optimization: AVX2 + OpenMP")
     print("="*70)
     print("\nTo verify build:")
     print("  python -c \"import dase_engine; print(dase_engine.__version__)\"")
