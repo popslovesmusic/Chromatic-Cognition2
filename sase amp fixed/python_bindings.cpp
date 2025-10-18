@@ -95,14 +95,13 @@ PYBIND11_MODULE(dase_engine, m) {
              "Calculate coupling between nodes",
              py::arg("node_index"));
 
-    // CPUFeatures utility class - THIS WAS MISSING
-    py::class_<CPUFeatures>(m, "CPUFeatures")
-        .def_static("has_avx2", &CPUFeatures::hasAVX2,
-                   "Check if CPU supports AVX2 instructions")
-        .def_static("has_fma", &CPUFeatures::hasFMA,
-                   "Check if CPU supports FMA instructions")
-        .def_static("print_capabilities", &CPUFeatures::printCapabilities,
-                   "Print detected CPU capabilities");
+    // CPUFeatures utility functions (namespace functions exposed as module functions)
+    m.def("has_avx2", &CPUFeatures::hasAVX2,
+          "Check if CPU supports AVX2 instructions");
+    m.def("has_fma", &CPUFeatures::hasFMA,
+          "Check if CPU supports FMA instructions");
+    m.def("print_cpu_capabilities", &CPUFeatures::printCapabilities,
+          "Print detected CPU capabilities");
 
     // Version info
     m.attr("__version__") = "1.0.0";

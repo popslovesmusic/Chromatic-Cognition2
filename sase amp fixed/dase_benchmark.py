@@ -48,8 +48,8 @@ class AnalogCircuitBenchmark:
             
         try:
             # Check CPU capabilities
-            has_avx2 = dase_engine.CPUFeatures.has_avx2()
-            has_fma = dase_engine.CPUFeatures.has_fma()
+            has_avx2 = dase_engine.has_avx2()
+            has_fma = dase_engine.has_fma()
             
             print(f"CPU Features: AVX2={has_avx2}, FMA={has_fma}")
             

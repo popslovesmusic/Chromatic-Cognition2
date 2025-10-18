@@ -17,7 +17,7 @@ Build:
 
 Test:
     python -c "import dase_engine; print(dase_engine.__version__)"
-    python -c "import dase_engine; dase_engine.CPUFeatures.print_capabilities()"
+    python -c "import dase_engine; dase_engine.print_cpu_capabilities()"
 """
 
 from setuptools import setup, Extension
@@ -186,5 +186,5 @@ if __name__ == '__main__':
     print("="*70)
     print("\nTo verify build:")
     print("  python -c \"import dase_engine; print(dase_engine.__version__)\"")
-    print("  python -c \"import dase_engine; dase_engine.CPUFeatures.print_capabilities()\"")
+    print("  python -c \"import dase_engine; dase_engine.print_cpu_capabilities()\"")
     print("="*70)
